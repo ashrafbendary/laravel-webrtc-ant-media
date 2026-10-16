@@ -9,11 +9,11 @@ A Laravel wrapper for the Ant Media Server REST API (`{ANT_MEDIA_URL}/{ANT_MEDIA
 ## Building an app with this package
 
 1. Install: `composer require ashrafbendary/laravel-webrtc-ant-media`, then `php artisan webrtc-ant-media:install`.
-2. Configure `.env`: `ANT_MEDIA_URL`, `ANT_MEDIA_APP`, `ANT_MEDIA_JWT_SECRET`, `ANT_MEDIA_STREAM_JWT_SECRET`.
+2. Configure `.env`: `ANT_MEDIA_ORIGIN_URL` (alias `ANT_MEDIA_URL`), optional `ANT_MEDIA_EDGE_URL`, `ANT_MEDIA_APP`, optional `ANT_MEDIA_TEST_APP`, `ANT_MEDIA_JWT_SECRET`, `ANT_MEDIA_STREAM_JWT_SECRET`. Use `AntMedia::test()` for test streams; never hard-code server URLs, use `AntMedia::urls()`.
 3. Always use the facade `AshrafBendary\WebRtcAntMedia\Facades\AntMedia`. Do not hand-write HTTP calls to Ant Media when a package method exists (see the REST API coverage table in README.md).
 4. A meeting room = `AntMedia::rooms()->create()`. Each participant publishes a subtrack and needs its own token.
 5. Issue a short-lived token per participant with `AntMedia::tokens()->jwt(...)` (type `publish` for camera/mic, `play` for watch-only). Never send secrets to the frontend; only send the `streamId` and the token.
-6. On the frontend, load the Ant Media WebRTC JS SDK and connect with that `streamId` and token.
+6. On the frontend, load the Ant Media WebRTC JS SDK and connect with that `streamId` and token. Get the WebSocket URLs from `AntMedia::urls()->forClient($streamId, $token)` (publish = origin, play = edge).
 7. End meetings with `AntMedia::rooms()->end($streamId)`, then `AntMedia::tokens()->revokeAll($streamId)`.
 8. Use webhook events (`LiveStreamStarted`, `LiveStreamEnded`, `RecordingReady`) instead of polling.
 

@@ -39,10 +39,14 @@ php artisan webrtc-ant-media:install
 ```
 
 ```dotenv
-ANT_MEDIA_URL=https://media.example.com:5443
-ANT_MEDIA_APP=live
+ANT_MEDIA_ORIGIN_URL=https://origin.example.com:5443   # REST API + WebRTC publish (alias: ANT_MEDIA_URL)
+ANT_MEDIA_EDGE_URL=https://edge.example.com:5443       # optional, playback URLs; empty = origin
+ANT_MEDIA_APP=LiveApp                                  # main application
+ANT_MEDIA_TEST_APP=WebRTCAppEE                         # optional test application
+ANT_MEDIA_USE_TEST_APP=false                           # true = every call goes to the test app
 ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
+ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 ```
 
 ## Minimal meeting room
@@ -52,21 +56,29 @@ use AshrafBendary\WebRtcAntMedia\Facades\AntMedia;
 
 $room  = AntMedia::rooms()->create(name: 'Weekly Team Meeting');
 $token = AntMedia::tokens()->jwt($room->streamId, type: 'publish', expiresAt: now()->addHours(2), roomId: $room->streamId);
-// Pass $room->streamId and $token to the Ant Media WebRTC JavaScript SDK in the view.
+// Pass $room->streamId and $token to the Ant Media WebRTC JavaScript SDK in the view, or:
+return AntMedia::urls()->forClient($room->streamId, $token); // streamId, token, app, publish/play WebSocket URLs, HLS URL
 ```
 
 ## API surface
 
+- `AntMedia::test()`, `AntMedia::main()`, `AntMedia::app($name)`: target the test app, the main app, or any app; `AntMedia::appName()`, `AntMedia::isTest()`
+- `AntMedia::urls()`: publishWebSocket (origin), playWebSocket, hls, player, recording (edge, falls back to origin), rtmp, forClient
+- `AntMedia::client()`: get, post, put, delete, upload for endpoints the package does not wrap; failures throw `AntMediaException`
 - `AntMedia::broadcasts()`: create, get, list, update, delete, deleteMany, start, stop, count, activeCount, info, sendMessage
-- `AntMedia::rooms()`: create, addParticipant, removeParticipant, participants, activeParticipants, activeParticipantsCount, end
-- `AntMedia::tokens()`: jwt, oneTime, validate, list, revokeAll
+- `AntMedia::rooms()`: create, get, delete, addParticipant, removeParticipant, participants, activeParticipants, activeParticipantsCount, end
+- `AntMedia::tokens()`: jwt (local, or `fromServer: true`), oneTime, validate, list, revokeAll
 - `AntMedia::recordings()`: start, stop, hlsToMp4
 - `AntMedia::vods()`: list, get, upload, importDirectory, delete, deleteMany, count
 - `AntMedia::endpoints()`: add, remove (RTMP/SRT restream)
 - `AntMedia::subscribers()`: add, list, delete, revokeAll, block, totp, connectionEvents
 - `AntMedia::stats()`: broadcast, total, webrtcClients, lowLevelSend, lowLevelReceive
 - `AntMedia::cameras()`: discover, profiles, move, stopMove
-- Events: `LiveStreamStarted`, `LiveStreamEnded`, `RecordingReady` (webhook route `/ant-media/webhook`)
+- Events: `LiveStreamStarted`, `LiveStreamEnded`, `RecordingReady`, `WebhookReceived` (every action). Webhook URL: `/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET`
+
+## StreamApp note
+
+The ant-media/conference-call-application (Circle) repo was archived on Aug 31, 2026. ant-media/StreamApp is the current base application (LiveApp, WebRTCAppEE and custom apps are built from it) and includes conference samples, but it does not have every Circle UI feature (waiting room, reactions, breakout rooms, moderation UI, ...). This package only uses the REST API, which is the same for every app.
 
 ## Optional
 
