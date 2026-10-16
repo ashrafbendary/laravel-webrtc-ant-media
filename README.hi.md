@@ -24,8 +24,11 @@
 - [आवश्यकताएँ](#requirements)
 - [इंस्टॉलेशन](#installation)
 - [कॉन्फ़िगरेशन](#configuration)
+  - [Origin, edge, मुख्य ऐप और टेस्ट ऐप](#origin-edge-main-app-and-test-app)
+  - [StreamApp और कॉन्फ्रेंस ऐप्लिकेशन](#streamapp-and-the-conference-application)
 - [क्विक स्टार्ट: वीडियो मीटिंग रूम बनाइए](#quick-start-create-a-video-meeting-room)
 - [उपयोग](#usage)
+  - [फ़्रंटएंड URLs (WebSocket, HLS, प्लेयर)](#frontend-urls-websocket-hls-player)
   - [लाइव स्ट्रीम (ब्रॉडकास्ट)](#live-streams-broadcasts)
   - [वीडियो कॉन्फ्रेंस रूम (मल्टी-पार्टी मीटिंग)](#video-conference-rooms-multi-party-meetings)
   - [सुरक्षित एक्सेस टोकन (JWT, one-time token, TOTP)](#secure-access-tokens-jwt-one-time-token-totp)
@@ -82,6 +85,8 @@
 ## फ़ीचर्स
 
 - Laravel facade, service container binding और auto-discovery
+- **Origin और edge सर्वर** के साथ **मुख्य ऐप और टेस्ट ऐप**, सब कुछ `.env` से
+- तैयार फ़्रंटएंड URLs (publish/play WebSocket, HLS, एम्बेडेड प्लेयर, RTMP)
 - **लाइव स्ट्रीम (ब्रॉडकास्ट)** बनाना, अपडेट करना, लिस्ट करना, शुरू करना, रोकना और डिलीट करना
 - Ant Media main track और subtracks पर आधारित **वीडियो कॉन्फ्रेंस रूम**
 - publish और play के लिए **JWT**, **one-time token** और **TOTP** स्ट्रीम सिक्योरिटी
@@ -130,7 +135,7 @@
 composer require ashrafbendary/laravel-webrtc-ant-media
 ```
 
-इंस्टॉलर चलाइए (यह config फ़ाइल और webhook route पब्लिश करता है):
+इंस्टॉलर चलाइए (यह config फ़ाइल पब्लिश करता है और `.env` keys प्रिंट करता है; webhook route अपने-आप रजिस्टर हो जाता है):
 
 ```bash
 php artisan webrtc-ant-media:install
@@ -149,8 +154,11 @@ php artisan vendor:publish --tag="webrtc-ant-media-config"
 इन्हें अपनी `.env` में जोड़िए:
 
 ```dotenv
-ANT_MEDIA_URL=https://media.example.com:5443
-ANT_MEDIA_APP=live
+ANT_MEDIA_ORIGIN_URL=https://origin.example.com:5443
+ANT_MEDIA_EDGE_URL=https://edge.example.com:5443
+ANT_MEDIA_APP=LiveApp
+ANT_MEDIA_TEST_APP=WebRTCAppEE
+ANT_MEDIA_USE_TEST_APP=false
 ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
@@ -159,14 +167,46 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 
 | Key | विवरण |
 |---|---|
-| `ANT_MEDIA_URL` | Ant Media Server का base URL। HTTPS के लिए पोर्ट `5443` और HTTP के लिए `5080` (सिर्फ़ लोकल) इस्तेमाल करें |
-| `ANT_MEDIA_APP` | ऐप्लिकेशन का नाम, जैसे `live`, `WebRTCAppEE` या आपका कस्टम ऐप |
+| `ANT_MEDIA_ORIGIN_URL` | Origin सर्वर का URL। सभी REST कॉल और WebRTC publishing यहीं जाती हैं। HTTPS के लिए पोर्ट `5443` और HTTP के लिए `5080` (सिर्फ़ लोकल) इस्तेमाल करें। `ANT_MEDIA_URL` अब भी alias के रूप में स्वीकार किया जाता है |
+| `ANT_MEDIA_EDGE_URL` | वैकल्पिक edge सर्वर या edge load balancer, playback URLs के लिए इस्तेमाल होता है। ख़ाली = origin |
+| `ANT_MEDIA_APP` | मुख्य ऐप्लिकेशन का नाम, जैसे `LiveApp`, `WebRTCAppEE`, `live` या StreamApp से बना आपका कस्टम ऐप |
+| `ANT_MEDIA_TEST_APP` | टेस्ट स्ट्रीम के लिए वैकल्पिक दूसरा ऐप्लिकेशन, जिसे `AntMedia::test()` इस्तेमाल करता है |
+| `ANT_MEDIA_USE_TEST_APP` | `true` होने पर हर कॉल टेस्ट ऐप पर जाती है (लोकल / staging में काम का) |
 | `ANT_MEDIA_JWT_SECRET` | **Application Settings > JWT REST API Filter** से मिला secret (HS256) |
 | `ANT_MEDIA_STREAM_JWT_SECRET` | publish / play स्ट्रीम टोकन साइन करने के लिए secret |
 | `ANT_MEDIA_TIMEOUT` | सेकंड में HTTP timeout |
+| `ANT_MEDIA_RETRIES` | फ़ेल हुई GET रिक्वेस्ट के लिए retries (POST / PUT / DELETE कभी retry नहीं होतीं)। डिफ़ॉल्ट `1` |
 | `ANT_MEDIA_WEBHOOK_SECRET` | आने वाले webhooks को वेरिफ़ाई करने के लिए shared secret |
 
+वैकल्पिक टेस्ट-ऐप overrides (हर एक न होने पर मुख्य वैल्यू इस्तेमाल होती है): `ANT_MEDIA_TEST_ORIGIN_URL`, `ANT_MEDIA_TEST_EDGE_URL`, `ANT_MEDIA_TEST_JWT_SECRET`, `ANT_MEDIA_TEST_STREAM_JWT_SECRET`।
+
 **ऑथेंटिकेशन।** डिफ़ॉल्ट रूप से Ant Media ऐप्लिकेशन के REST endpoints सिर्फ़ `127.0.0.1` से रिक्वेस्ट स्वीकार करते हैं (IP filter)। अगर आपका Laravel बैकएंड रिमोट है, तो Ant Media वेब पैनल में **JWT REST API Filter** चालू कीजिए और ऊपर वाला secret सेट कीजिए। पैकेज `exp` claim के साथ एक कम समय तक वैध HS256 टोकन साइन करता है और उसे हर रिक्वेस्ट में `Authorization: Bearer {token}` के रूप में भेजता है।
+
+<a id="origin-edge-main-app-and-test-app"></a>
+
+### Origin, edge, मुख्य ऐप और टेस्ट ऐप
+
+```php
+use AshrafBendary\WebRtcAntMedia\Facades\AntMedia;
+
+AntMedia::broadcasts()->create(['name' => 'Live']);          // मुख्य ऐप (ANT_MEDIA_APP)
+AntMedia::test()->broadcasts()->create(['name' => 'Try']);   // टेस्ट ऐप (ANT_MEDIA_TEST_APP)
+AntMedia::main()->broadcasts()->list();                      // मुख्य ऐप, भले ही ANT_MEDIA_USE_TEST_APP=true हो
+AntMedia::app('WebRTCAppEE')->broadcasts()->count();         // उन्हीं सर्वरों पर कोई भी दूसरा ऐप
+
+AntMedia::appName();   // "LiveApp" (या ANT_MEDIA_USE_TEST_APP=true होने पर टेस्ट ऐप)
+```
+
+- REST API कॉल और WebRTC **publishing** हमेशा **origin** सर्वर का इस्तेमाल करती हैं।
+- **Playback** URLs (WebRTC play, HLS, एम्बेडेड प्लेयर, रिकॉर्डिंग) **edge** सर्वर का इस्तेमाल करते हैं, या edge सेट न होने पर origin का।
+
+<a id="streamapp-and-the-conference-application"></a>
+
+### StreamApp और कॉन्फ्रेंस ऐप्लिकेशन
+
+पुरानी [conference-call-application](https://github.com/ant-media/conference-call-application) (Circle) रिपॉज़िटरी 31 अगस्त 2026 को archive कर दी गई। [StreamApp](https://github.com/ant-media/StreamApp) अब Ant Media Server का मौजूदा base ऐप्लिकेशन है: डिफ़ॉल्ट ऐप्स (`LiveApp`, `WebRTCAppEE`, `live`) और कस्टम ऐप्स इसी से बनते हैं, और इसके साथ कॉन्फ्रेंस सैंपल (`conference.html`, `multitrack-conference.html`) आते हैं।
+
+StreamApp, Circle UI का फ़ीचर-दर-फ़ीचर विकल्प **नहीं** है: इसका कॉन्फ्रेंस पेज join/leave, publish/play, स्क्रीन शेयर, mute और कैमरा टॉगल तथा data channel चैट कवर करता है, लेकिन इसमें तैयार रिकॉर्डिंग बटन, वेटिंग रूम, कॉन्फ्रेंस पेज में वर्चुअल बैकग्राउंड, रिएक्शन, प्रतिभागियों की सूची, pinning, ब्रेकआउट रूम या वेबिनार/मॉडरेशन UI नहीं है। यह पैकेज इनमें से किसी भी UI पर निर्भर नहीं है: यह Ant Media REST API से बात करता है, जो हर ऐप्लिकेशन के लिए एक जैसी है, इसलिए `ANT_MEDIA_APP` को अपने StreamApp-आधारित ऐप पर सेट कीजिए और अपनी ज़रूरत का मीटिंग UI बनाइए।
 
 <a id="quick-start-create-a-video-meeting-room"></a>
 
@@ -190,11 +230,33 @@ $token = AntMedia::tokens()->jwt(
 return view('meeting', compact('room', 'token'));
 ```
 
+या फ़्रंटएंड को जो कुछ चाहिए, वह सब JSON के रूप में लौटाइए (कोई secret नहीं):
+
+```php
+return response()->json(AntMedia::urls()->forClient($room->streamId, $token));
+// { streamId, token, app, publishWebSocketUrl, playWebSocketUrl, hlsUrl }
+```
+
 Zoom जैसे मीटिंग रूम के लिए पूरा बैकएंड बस इतना ही है। ब्राउज़र की तरफ़ आधिकारिक [Ant Media WebRTC JavaScript SDK](https://docs.antmedia.io/guides/developer-sdk-and-api/sdk-integration/) इस्तेमाल होता है।
 
 <a id="usage"></a>
 
 ## उपयोग
+
+<a id="frontend-urls-websocket-hls-player"></a>
+
+### फ़्रंटएंड URLs (WebSocket, HLS, प्लेयर)
+
+```php
+AntMedia::urls()->publishWebSocket();              // wss://origin.example.com:5443/LiveApp/websocket
+AntMedia::urls()->playWebSocket();                 // wss://edge.example.com:5443/LiveApp/websocket
+AntMedia::urls()->hls($streamId, $token);          // https://edge.../LiveApp/streams/{id}.m3u8?token=...
+AntMedia::urls()->player($streamId, $token);       // https://edge.../LiveApp/play.html?id=...&token=...
+AntMedia::urls()->recording('stream1.mp4');        // https://edge.../LiveApp/streams/stream1.mp4
+AntMedia::urls()->rtmp($streamId);                 // rtmp://origin.example.com/LiveApp/{id} (OBS)
+AntMedia::urls()->forClient($streamId, $token);    // आपके JS के लिए array: streamId, token, WebSocket और HLS URLs
+AntMedia::test()->urls()->playWebSocket();         // टेस्ट ऐप के लिए वही helpers
+```
 
 <a id="live-streams-broadcasts"></a>
 
@@ -216,6 +278,8 @@ AntMedia::broadcasts()->list(offset: 0, size: 50, type: 'liveStream', sortBy: 'd
 AntMedia::broadcasts()->update($stream->streamId, ['name' => 'New title']);
 AntMedia::broadcasts()->stop($stream->streamId);
 AntMedia::broadcasts()->delete($stream->streamId);
+$stream->isLive();                                  // status === "broadcasting"
+$stream->get('hlsViewerCount');                     // Ant Media का कोई भी दूसरा फ़ील्ड
 AntMedia::broadcasts()->deleteMany(['id1', 'id2']);
 AntMedia::broadcasts()->count();
 AntMedia::broadcasts()->activeCount();
@@ -230,6 +294,8 @@ AntMedia::broadcasts()->info($stream->streamId);   // width, height, bitrate, co
 
 ```php
 $room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // अपनी पसंद का रूम id चुनिए
+AntMedia::rooms()->get('class-7a');
 
 AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
@@ -239,6 +305,7 @@ AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'pati
 
 // सभी के लिए मीटिंग समाप्त कीजिए
 AntMedia::rooms()->end($room->streamId);   // main track और subtracks को रोक देता है
+AntMedia::rooms()->delete($room->streamId); // रूम और उसके subtracks को डिलीट कर देता है
 ```
 
 <a id="secure-access-tokens-jwt-one-time-token-totp"></a>
@@ -248,8 +315,11 @@ AntMedia::rooms()->end($room->streamId);   // main track और subtracks को
 तय कीजिए कि कौन **publish** (कैमरा / माइक) कर सकता है और कौन **play** (देख) सकता है।
 
 ```php
-// JWT टोकन (सुझाया गया), लोकली साइन होता है, सर्वर तक round trip की ज़रूरत नहीं
+// JWT टोकन (सुझाया गया), ANT_MEDIA_STREAM_JWT_SECRET से लोकली साइन होता है, सर्वर तक round trip की ज़रूरत नहीं
 $jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour());
+
+// इसकी जगह Ant Media से साइन करवाइए (ANT_MEDIA_STREAM_JWT_SECRET ख़ाली होने पर यह अपने-आप भी इस्तेमाल होता है)
+$jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour(), fromServer: true);
 
 // Ant Media Server द्वारा जनरेट किया गया one-time टोकन
 $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: now()->addMinutes(30));
@@ -257,7 +327,7 @@ $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: no
 // किसी सब्सक्राइबर के लिए TOTP
 $totp = AntMedia::subscribers()->totp($streamId, subscriberId: 'user_42', type: 'publish');
 
-AntMedia::tokens()->validate($token);
+AntMedia::tokens()->validate($token, $streamId, type: 'play');   // bool
 AntMedia::tokens()->list($streamId);
 AntMedia::tokens()->revokeAll($streamId);
 ```
@@ -293,8 +363,11 @@ AntMedia::vods()->count();
 ### YouTube, Facebook, RTMP और SRT पर रीस्ट्रीम
 
 ```php
-AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result = AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result->dataId;   // endpoint service id
 AntMedia::endpoints()->add($streamId, 'srt://ingest.example.com:9000', resolutionHeight: 720);
+
+// जोड़े गए URL से या endpoint service id से हटाइए
 AntMedia::endpoints()->remove($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
 ```
 
@@ -363,11 +436,13 @@ AntMedia::broadcasts()->start($camera->streamId);      // स्ट्रीम 
 
 ### Webhooks और Laravel events
 
-Ant Media में **Application Settings > Webhook URL** को इस पते पर सेट कीजिए:
+Ant Media में **Application Settings > Webhook URL** को इस पते पर सेट कीजिए (route अपने-आप रजिस्टर हो जाता है):
 
 ```
-https://your-app.com/ant-media/webhook
+https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
+
+ग़लत `secret` वाली रिक्वेस्ट HTTP 403 के साथ अस्वीकार कर दी जाती हैं। Ant Media webhook को form data या JSON के रूप में भेज सकता है; दोनों काम करते हैं।
 
 native Laravel events को सुनिए:
 
@@ -379,13 +454,31 @@ use AshrafBendary\WebRtcAntMedia\Events\RecordingReady;
 Event::listen(LiveStreamStarted::class, fn ($e) => logger("Meeting started: {$e->streamId}"));
 Event::listen(LiveStreamEnded::class,   fn ($e) => logger("Meeting ended: {$e->streamId}"));
 Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e->vodId}"));
+
+// हर webhook action (playStarted, subtrackAddedInTheMainTrack, endpointFailed, ...)
+use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
+
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
 ```
+
+<a id="endpoints-that-are-not-wrapped"></a>
+
+### वे endpoints जो wrap नहीं किए गए हैं
+
+किसी भी दूसरे Ant Media endpoint को underlying client के ज़रिए कॉल कीजिए (auth, base URL और ऐप आपके लिए अपने-आप हैंडल होते हैं):
+
+```php
+AntMedia::client()->get("broadcasts/{$streamId}/ip-camera-error");
+AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
+```
+
+हर फ़ेल रिक्वेस्ट (HTTP 4xx / 5xx) `AshrafBendary\WebRtcAntMedia\Exceptions\AntMediaException` थ्रो करती है; किसी ऐसी स्ट्रीम का `get()` जो मौजूद नहीं है, `null` लौटाता है।
 
 <a id="rest-api-coverage"></a>
 
 ## REST API कवरेज
 
-सभी कॉल `{ANT_MEDIA_URL}/{ANT_MEDIA_APP}/rest/v2/...` पर जाती हैं। पूरे schemas: [Ant Media Swagger](https://antmedia.io/rest/)।
+सभी कॉल `{ANT_MEDIA_ORIGIN_URL}/{ANT_MEDIA_APP}/rest/v2/...` (या टेस्ट ऐप) पर जाती हैं। पूरे schemas: [Ant Media Swagger](https://antmedia.io/rest/)।
 
 | पैकेज मेथड | HTTP | Ant Media endpoint |
 |---|---|---|
@@ -406,6 +499,8 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 | `rooms()->participants()` | GET | `/broadcasts/{id}/subtracks/{offset}/{size}` |
 | `rooms()->activeParticipants()` | GET | `/broadcasts/{id}/active-subtracks/{offset}/{size}` |
 | `rooms()->activeParticipantsCount()` | GET | `/broadcasts/{id}/active-subtracks-count` |
+| `rooms()->end()` | POST | `/broadcasts/{id}/stop?stopSubtracks=true` |
+| `rooms()->delete()` | DELETE | `/broadcasts/{id}?deleteSubtracks=true` |
 | `tokens()->oneTime()` | GET | `/broadcasts/{id}/token` |
 | `tokens()->jwt()` (server mode) | GET | `/broadcasts/{id}/jwt-token` |
 | `tokens()->list()` | GET | `/broadcasts/{id}/tokens/list/{offset}/{size}` |
@@ -425,6 +520,8 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 | `stats()->broadcast()` | GET | `/broadcasts/{id}/broadcast-statistics` |
 | `stats()->total()` | GET | `/broadcasts/total-broadcast-statistics` |
 | `stats()->webrtcClients()` | GET | `/broadcasts/{id}/webrtc-client-stats/{offset}/{size}` |
+| `stats()->lowLevelSend()` | GET | `/broadcasts/webrtc-send-low-level-stats` |
+| `stats()->lowLevelReceive()` | GET | `/broadcasts/webrtc-receive-low-level-stats` |
 | `cameras()->discover()` | GET | `/broadcasts/onvif-devices` |
 | `cameras()->profiles()` | GET | `/broadcasts/{id}/ip-camera/device-profiles` |
 | `cameras()->move()` | POST | `/broadcasts/{id}/ip-camera/move` |
@@ -488,7 +585,13 @@ P2P वीडियो को सीधे ब्राउज़रों के
 हाँ। सभी कॉल Laravel HTTP client का उपयोग करती हैं और jobs में चलाने के लिए सुरक्षित हैं।
 
 **क्या यह Ant Media Server cluster mode को सपोर्ट करता है?**
-हाँ। `ANT_MEDIA_URL` को अपने cluster load balancer या origin पर पॉइंट कीजिए।
+हाँ। `ANT_MEDIA_ORIGIN_URL` को अपने origin (या origin load balancer) पर और `ANT_MEDIA_EDGE_URL` को अपने edge load balancer पर सेट कीजिए।
+
+**क्या StreamApp, conference-call-application की जगह लेता है?**
+StreamApp मौजूदा base ऐप है और conference-call-application रिपॉज़िटरी archive हो चुकी है, लेकिन StreamApp में उसके सभी UI फ़ीचर्स नहीं हैं। देखें [StreamApp और कॉन्फ्रेंस ऐप्लिकेशन](#streamapp-and-the-conference-application)।
+
+**प्रोडक्शन स्ट्रीम को छुए बिना टेस्ट कैसे करें?**
+`ANT_MEDIA_TEST_APP` सेट कीजिए, फिर `AntMedia::test()` इस्तेमाल कीजिए, या अपनी लोकल / staging `.env` में `ANT_MEDIA_USE_TEST_APP=true` सेट कीजिए।
 
 <a id="testing"></a>
 
