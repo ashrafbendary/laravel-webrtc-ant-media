@@ -24,8 +24,11 @@
 - [Gereksinimler](#requirements)
 - [Kurulum](#installation)
 - [Yapılandırma](#configuration)
+  - [Origin, edge, ana uygulama ve test uygulaması](#origin-edge-main-app-and-test-app)
+  - [StreamApp ve konferans uygulaması](#streamapp-and-the-conference-application)
 - [Hızlı başlangıç: görüntülü toplantı odası oluşturma](#quick-start-create-a-video-meeting-room)
 - [Kullanım](#usage)
+  - [Frontend URL'leri (WebSocket, HLS, oynatıcı)](#frontend-urls-websocket-hls-player)
   - [Canlı yayınlar (broadcast)](#live-streams-broadcasts)
   - [Video konferans odaları (çok katılımcılı toplantılar)](#video-conference-rooms-multi-party-meetings)
   - [Güvenli erişim token'ları (JWT, tek kullanımlık token, TOTP)](#secure-access-tokens-jwt-one-time-token-totp)
@@ -82,6 +85,8 @@ Bu paket **Ant Media Server'ı bir WebRTC SFU / medya sunucusu olarak** kullanı
 ## Özellikler
 
 - Laravel facade, service container binding ve auto-discovery
+- **Origin ve edge sunucuları** ile **ana uygulama ve test uygulaması**, hepsi `.env` üzerinden
+- Hazır frontend URL'leri (publish/play WebSocket, HLS, gömülü oynatıcı, RTMP)
 - **Canlı yayınları (broadcast)** oluşturma, güncelleme, listeleme, başlatma, durdurma ve silme
 - Ant Media ana track ve alt track'lerini (subtrack) kullanan **video konferans odaları**
 - Yayın (publish) ve izleme (play) için **JWT**, **tek kullanımlık token** ve **TOTP** yayın güvenliği
@@ -130,7 +135,7 @@ Bu paket **Ant Media Server'ı bir WebRTC SFU / medya sunucusu olarak** kullanı
 composer require ashrafbendary/laravel-webrtc-ant-media
 ```
 
-Kurulum aracını çalıştırın (yapılandırma dosyasını ve webhook route'unu yayımlar):
+Kurulum aracını çalıştırın (yapılandırma dosyasını yayımlar ve `.env` anahtarlarını yazdırır; webhook route'u otomatik olarak kaydedilir):
 
 ```bash
 php artisan webrtc-ant-media:install
@@ -149,8 +154,11 @@ php artisan vendor:publish --tag="webrtc-ant-media-config"
 `.env` dosyanıza şunları ekleyin:
 
 ```dotenv
-ANT_MEDIA_URL=https://media.example.com:5443
-ANT_MEDIA_APP=live
+ANT_MEDIA_ORIGIN_URL=https://origin.example.com:5443
+ANT_MEDIA_EDGE_URL=https://edge.example.com:5443
+ANT_MEDIA_APP=LiveApp
+ANT_MEDIA_TEST_APP=WebRTCAppEE
+ANT_MEDIA_USE_TEST_APP=false
 ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
@@ -159,14 +167,46 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 
 | Anahtar | Açıklama |
 |---|---|
-| `ANT_MEDIA_URL` | Ant Media Server temel URL'si. HTTPS için `5443`, HTTP için `5080` portunu kullanın (yalnızca yerel ortamda) |
-| `ANT_MEDIA_APP` | Uygulama adı, örneğin `live`, `WebRTCAppEE` veya kendi özel uygulamanız |
+| `ANT_MEDIA_ORIGIN_URL` | Origin sunucusunun URL'si. Tüm REST çağrıları ve WebRTC yayınları (publishing) buraya gider. HTTPS için `5443`, HTTP için `5080` portunu kullanın (yalnızca yerel ortamda). `ANT_MEDIA_URL` hâlâ takma ad (alias) olarak kabul edilir |
+| `ANT_MEDIA_EDGE_URL` | İsteğe bağlı edge sunucusu veya edge load balancer'ı; oynatma (playback) URL'leri için kullanılır. Boş = origin |
+| `ANT_MEDIA_APP` | Ana uygulama adı, örneğin `LiveApp`, `WebRTCAppEE`, `live` veya StreamApp'ten oluşturulmuş kendi özel uygulamanız |
+| `ANT_MEDIA_TEST_APP` | Test yayınları için isteğe bağlı ikinci uygulama; `AntMedia::test()` tarafından kullanılır |
+| `ANT_MEDIA_USE_TEST_APP` | `true` olduğunda tüm çağrılar test uygulamasına gider (yerel / staging ortamında kullanışlıdır) |
 | `ANT_MEDIA_JWT_SECRET` | **Application Settings > JWT REST API Filter** bölümündeki secret (HS256) |
 | `ANT_MEDIA_STREAM_JWT_SECRET` | Publish / play yayın token'larını imzalamak için kullanılan secret |
 | `ANT_MEDIA_TIMEOUT` | Saniye cinsinden HTTP zaman aşımı |
+| `ANT_MEDIA_RETRIES` | Başarısız GET istekleri için yeniden deneme sayısı (POST / PUT / DELETE asla yeniden denenmez). Varsayılan `1` |
 | `ANT_MEDIA_WEBHOOK_SECRET` | Gelen webhook'ları doğrulamak için kullanılan paylaşımlı secret |
 
+İsteğe bağlı test uygulaması geçersiz kılmaları (her biri ayarlanmazsa ana değer kullanılır): `ANT_MEDIA_TEST_ORIGIN_URL`, `ANT_MEDIA_TEST_EDGE_URL`, `ANT_MEDIA_TEST_JWT_SECRET`, `ANT_MEDIA_TEST_STREAM_JWT_SECRET`.
+
 **Kimlik doğrulama.** Ant Media uygulama REST uç noktaları varsayılan olarak yalnızca `127.0.0.1` adresinden gelen istekleri kabul eder (IP filtresi). Uzak bir Laravel backend'i için Ant Media web panelinde **JWT REST API Filter** seçeneğini etkinleştirin ve yukarıdaki secret'ı ayarlayın. Paket, `exp` claim'i içeren kısa ömürlü bir HS256 token'ı imzalar ve her istekte `Authorization: Bearer {token}` başlığı olarak gönderir.
+
+<a id="origin-edge-main-app-and-test-app"></a>
+
+### Origin, edge, ana uygulama ve test uygulaması
+
+```php
+use AshrafBendary\WebRtcAntMedia\Facades\AntMedia;
+
+AntMedia::broadcasts()->create(['name' => 'Live']);          // ana uygulama (ANT_MEDIA_APP)
+AntMedia::test()->broadcasts()->create(['name' => 'Try']);   // test uygulaması (ANT_MEDIA_TEST_APP)
+AntMedia::main()->broadcasts()->list();                      // ANT_MEDIA_USE_TEST_APP=true olsa bile ana uygulama
+AntMedia::app('WebRTCAppEE')->broadcasts()->count();         // aynı sunuculardaki başka herhangi bir uygulama
+
+AntMedia::appName();   // "LiveApp" (veya ANT_MEDIA_USE_TEST_APP=true ise test uygulaması)
+```
+
+- REST API çağrıları ve WebRTC **yayını (publishing)** her zaman **origin** sunucusunu kullanır.
+- **Oynatma (playback)** URL'leri (WebRTC play, HLS, gömülü oynatıcı, kayıtlar) **edge** sunucusunu, edge ayarlanmamışsa origin'i kullanır.
+
+<a id="streamapp-and-the-conference-application"></a>
+
+### StreamApp ve konferans uygulaması
+
+Eski [conference-call-application](https://github.com/ant-media/conference-call-application) (Circle) deposu 31 Ağustos 2026'da arşivlendi. [StreamApp](https://github.com/ant-media/StreamApp), Ant Media Server'ın güncel temel uygulamasıdır: varsayılan uygulamalar (`LiveApp`, `WebRTCAppEE`, `live`) ve özel uygulamalar bundan oluşturulur; ayrıca konferans örnekleriyle (`conference.html`, `multitrack-conference.html`) birlikte gelir.
+
+StreamApp, Circle arayüzünün özellik özellik birebir karşılığı **değildir**: konferans sayfası katılma/ayrılma, publish/play, ekran paylaşımı, mikrofon ve kamera açma/kapatma ile data channel sohbetini kapsar; ancak hazır bir kayıt düğmesi, bekleme odası, konferans sayfasında sanal arka plan, tepkiler, katılımcı listesi, sabitleme (pinning), ara odalar (breakout rooms) veya webinar/moderasyon arayüzü sunmaz. Bu paket bu arayüzlerin hiçbirine bağlı değildir: her uygulama için aynı olan Ant Media REST API ile konuşur; bu yüzden `ANT_MEDIA_APP` değerini StreamApp tabanlı uygulamanıza ayarlayın ve ihtiyacınız olan toplantı arayüzünü kendiniz oluşturun.
 
 <a id="quick-start-create-a-video-meeting-room"></a>
 
@@ -190,11 +230,33 @@ $token = AntMedia::tokens()->jwt(
 return view('meeting', compact('room', 'token'));
 ```
 
+Ya da frontend'in ihtiyaç duyduğu her şeyi JSON olarak döndürün (secret içermez):
+
+```php
+return response()->json(AntMedia::urls()->forClient($room->streamId, $token));
+// { streamId, token, app, publishWebSocketUrl, playWebSocketUrl, hlsUrl }
+```
+
 Zoom tarzı bir toplantı odası için gereken backend'in tamamı bu kadar. Tarayıcı tarafında resmi [Ant Media WebRTC JavaScript SDK](https://docs.antmedia.io/guides/developer-sdk-and-api/sdk-integration/) kullanılır.
 
 <a id="usage"></a>
 
 ## Kullanım
+
+<a id="frontend-urls-websocket-hls-player"></a>
+
+### Frontend URL'leri (WebSocket, HLS, oynatıcı)
+
+```php
+AntMedia::urls()->publishWebSocket();              // wss://origin.example.com:5443/LiveApp/websocket
+AntMedia::urls()->playWebSocket();                 // wss://edge.example.com:5443/LiveApp/websocket
+AntMedia::urls()->hls($streamId, $token);          // https://edge.../LiveApp/streams/{id}.m3u8?token=...
+AntMedia::urls()->player($streamId, $token);       // https://edge.../LiveApp/play.html?id=...&token=...
+AntMedia::urls()->recording('stream1.mp4');        // https://edge.../LiveApp/streams/stream1.mp4
+AntMedia::urls()->rtmp($streamId);                 // rtmp://origin.example.com/LiveApp/{id} (OBS)
+AntMedia::urls()->forClient($streamId, $token);    // JS kodunuz için dizi: streamId, token, WebSocket ve HLS URL'leri
+AntMedia::test()->urls()->playWebSocket();         // test uygulaması için aynı yardımcılar
+```
 
 <a id="live-streams-broadcasts"></a>
 
@@ -216,6 +278,8 @@ AntMedia::broadcasts()->list(offset: 0, size: 50, type: 'liveStream', sortBy: 'd
 AntMedia::broadcasts()->update($stream->streamId, ['name' => 'New title']);
 AntMedia::broadcasts()->stop($stream->streamId);
 AntMedia::broadcasts()->delete($stream->streamId);
+$stream->isLive();                                  // status === "broadcasting"
+$stream->get('hlsViewerCount');                     // Ant Media'nın diğer herhangi bir alanı
 AntMedia::broadcasts()->deleteMany(['id1', 'id2']);
 AntMedia::broadcasts()->count();
 AntMedia::broadcasts()->activeCount();
@@ -230,6 +294,8 @@ Bir toplantı odası, bir ana track'tir (main track). Her katılımcı bir alt t
 
 ```php
 $room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // kendi oda id'nizi seçin
+AntMedia::rooms()->get('class-7a');
 
 AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
@@ -239,6 +305,7 @@ AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'pati
 
 // Toplantıyı herkes için sonlandırın
 AntMedia::rooms()->end($room->streamId);   // ana track'i ve alt track'leri durdurur
+AntMedia::rooms()->delete($room->streamId); // odayı ve alt track'lerini siler
 ```
 
 <a id="secure-access-tokens-jwt-one-time-token-totp"></a>
@@ -248,8 +315,11 @@ AntMedia::rooms()->end($room->streamId);   // ana track'i ve alt track'leri durd
 Kimin **yayın yapabileceğini** (publish: kamera / mikrofon) ve kimin **izleyebileceğini** (play) güvence altına alın.
 
 ```php
-// JWT token (önerilen), yerel olarak imzalanır, sunucuya ek istek gerekmez
+// JWT token (önerilen), ANT_MEDIA_STREAM_JWT_SECRET ile yerel olarak imzalanır, sunucuya ek istek gerekmez
 $jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour());
+
+// Bunun yerine Ant Media'ya imzalatın (ANT_MEDIA_STREAM_JWT_SECRET boşsa otomatik olarak da bu yol kullanılır)
+$jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour(), fromServer: true);
 
 // Ant Media Server tarafından üretilen tek kullanımlık token
 $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: now()->addMinutes(30));
@@ -257,7 +327,7 @@ $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: no
 // Bir abone için TOTP
 $totp = AntMedia::subscribers()->totp($streamId, subscriberId: 'user_42', type: 'publish');
 
-AntMedia::tokens()->validate($token);
+AntMedia::tokens()->validate($token, $streamId, type: 'play');   // bool
 AntMedia::tokens()->list($streamId);
 AntMedia::tokens()->revokeAll($streamId);
 ```
@@ -293,8 +363,11 @@ AntMedia::vods()->count();
 ### YouTube, Facebook, RTMP ve SRT'ye yeniden yayın
 
 ```php
-AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result = AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result->dataId;   // endpoint servis id'si
 AntMedia::endpoints()->add($streamId, 'srt://ingest.example.com:9000', resolutionHeight: 720);
+
+// Eklediğiniz URL ile veya endpoint servis id'si ile kaldırın
 AntMedia::endpoints()->remove($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
 ```
 
@@ -363,11 +436,13 @@ AntMedia::broadcasts()->start($camera->streamId);      // bir yayın kaynağın�
 
 ### Webhook'lar ve Laravel event'leri
 
-Ant Media'da **Application Settings > Webhook URL** ayarını şu adrese yönlendirin:
+Ant Media'da **Application Settings > Webhook URL** ayarını şu adrese yönlendirin (route otomatik olarak kaydedilir):
 
 ```
-https://your-app.com/ant-media/webhook
+https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
+
+Yanlış `secret` içeren istekler HTTP 403 ile reddedilir. Ant Media webhook'u form verisi veya JSON olarak gönderebilir; ikisi de çalışır.
 
 Yerel (native) Laravel event'lerini dinleyin:
 
@@ -379,13 +454,31 @@ use AshrafBendary\WebRtcAntMedia\Events\RecordingReady;
 Event::listen(LiveStreamStarted::class, fn ($e) => logger("Meeting started: {$e->streamId}"));
 Event::listen(LiveStreamEnded::class,   fn ($e) => logger("Meeting ended: {$e->streamId}"));
 Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e->vodId}"));
+
+// Tüm webhook action'ları (playStarted, subtrackAddedInTheMainTrack, endpointFailed, ...)
+use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
+
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
 ```
+
+<a id="endpoints-that-are-not-wrapped"></a>
+
+### Paketin sarmalamadığı uç noktalar
+
+Diğer herhangi bir Ant Media uç noktasını alttaki client üzerinden çağırın (kimlik doğrulama, temel URL ve uygulama sizin için yönetilir):
+
+```php
+AntMedia::client()->get("broadcasts/{$streamId}/ip-camera-error");
+AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
+```
+
+Başarısız her istek (HTTP 4xx / 5xx) `AshrafBendary\WebRtcAntMedia\Exceptions\AntMediaException` fırlatır; var olmayan bir yayın için `get()` çağrısı `null` döndürür.
 
 <a id="rest-api-coverage"></a>
 
 ## REST API kapsamı
 
-Tüm çağrılar `{ANT_MEDIA_URL}/{ANT_MEDIA_APP}/rest/v2/...` adresini hedefler. Şemaların tamamı: [Ant Media Swagger](https://antmedia.io/rest/).
+Tüm çağrılar `{ANT_MEDIA_ORIGIN_URL}/{ANT_MEDIA_APP}/rest/v2/...` adresini (veya test uygulamasını) hedefler. Şemaların tamamı: [Ant Media Swagger](https://antmedia.io/rest/).
 
 | Paket metodu | HTTP | Ant Media uç noktası |
 |---|---|---|
@@ -406,6 +499,8 @@ Tüm çağrılar `{ANT_MEDIA_URL}/{ANT_MEDIA_APP}/rest/v2/...` adresini hedefler
 | `rooms()->participants()` | GET | `/broadcasts/{id}/subtracks/{offset}/{size}` |
 | `rooms()->activeParticipants()` | GET | `/broadcasts/{id}/active-subtracks/{offset}/{size}` |
 | `rooms()->activeParticipantsCount()` | GET | `/broadcasts/{id}/active-subtracks-count` |
+| `rooms()->end()` | POST | `/broadcasts/{id}/stop?stopSubtracks=true` |
+| `rooms()->delete()` | DELETE | `/broadcasts/{id}?deleteSubtracks=true` |
 | `tokens()->oneTime()` | GET | `/broadcasts/{id}/token` |
 | `tokens()->jwt()` (server mode) | GET | `/broadcasts/{id}/jwt-token` |
 | `tokens()->list()` | GET | `/broadcasts/{id}/tokens/list/{offset}/{size}` |
@@ -425,6 +520,8 @@ Tüm çağrılar `{ANT_MEDIA_URL}/{ANT_MEDIA_APP}/rest/v2/...` adresini hedefler
 | `stats()->broadcast()` | GET | `/broadcasts/{id}/broadcast-statistics` |
 | `stats()->total()` | GET | `/broadcasts/total-broadcast-statistics` |
 | `stats()->webrtcClients()` | GET | `/broadcasts/{id}/webrtc-client-stats/{offset}/{size}` |
+| `stats()->lowLevelSend()` | GET | `/broadcasts/webrtc-send-low-level-stats` |
+| `stats()->lowLevelReceive()` | GET | `/broadcasts/webrtc-receive-low-level-stats` |
 | `cameras()->discover()` | GET | `/broadcasts/onvif-devices` |
 | `cameras()->profiles()` | GET | `/broadcasts/{id}/ip-camera/device-profiles` |
 | `cameras()->move()` | POST | `/broadcasts/{id}/ip-camera/move` |
@@ -488,7 +585,13 @@ Web'de Blade, Livewire, Inertia, Vue, React ve saf JavaScript; ayrıca resmi Ant
 Evet. Tüm çağrılar Laravel HTTP client'ını kullanır ve job'lar içinde güvenle çalıştırılabilir.
 
 **Ant Media Server küme (cluster) modunu destekliyor mu?**
-Evet. `ANT_MEDIA_URL` değerini kümenizin load balancer'ına veya origin sunucusuna yönlendirin.
+Evet. `ANT_MEDIA_ORIGIN_URL` değerini origin sunucunuza (veya origin load balancer'ınıza), `ANT_MEDIA_EDGE_URL` değerini de edge load balancer'ınıza ayarlayın.
+
+**StreamApp, conference-call-application'ın yerini mi alıyor?**
+StreamApp güncel temel uygulamadır ve conference-call-application deposu arşivlenmiştir; ancak StreamApp onun tüm arayüz özelliklerine sahip değildir. Bkz. [StreamApp ve konferans uygulaması](#streamapp-and-the-conference-application).
+
+**Canlı ortamdaki (production) yayınlara dokunmadan nasıl test ederim?**
+`ANT_MEDIA_TEST_APP` değerini ayarlayın, ardından `AntMedia::test()` kullanın ya da yerel / staging `.env` dosyanızda `ANT_MEDIA_USE_TEST_APP=true` ayarlayın.
 
 <a id="testing"></a>
 

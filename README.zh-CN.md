@@ -26,8 +26,11 @@
 - [环境要求](#requirements)
 - [安装](#installation)
 - [配置](#configuration)
+  - [源站、边缘、主应用与测试应用](#origin-edge-main-app-and-test-app)
+  - [StreamApp 与会议应用](#streamapp-and-the-conference-application)
 - [快速开始：创建视频会议室](#quick-start-create-a-video-meeting-room)
 - [使用方法](#usage)
+  - [前端 URL（WebSocket、HLS、播放器）](#frontend-urls-websocket-hls-player)
   - [直播（广播流）](#live-streams-broadcasts)
   - [视频会议室（多人会议）](#video-conference-rooms-multi-party-meetings)
   - [安全访问令牌（JWT、一次性令牌、TOTP）](#secure-access-tokens-jwt-one-time-token-totp)
@@ -84,6 +87,8 @@
 ## 功能特性
 
 - Laravel Facade、服务容器绑定与自动发现
+- **源站与边缘服务器**，以及 **主应用与测试应用**，全部通过 `.env` 配置
+- 开箱即用的前端 URL（推流 / 播放 WebSocket、HLS、嵌入式播放器、RTMP）
 - 创建、更新、列出、启动、停止和删除 **直播流（广播）**
 - 基于 Ant Media 主轨道（main track）与子轨道（subtrack）的 **视频会议室**
 - 推流与播放的 **JWT**、**一次性令牌** 和 **TOTP** 流安全机制
@@ -132,7 +137,7 @@
 composer require ashrafbendary/laravel-webrtc-ant-media
 ```
 
-运行安装命令（发布配置文件和 Webhook 路由）：
+运行安装命令（发布配置文件并输出 `.env` 配置项；Webhook 路由会自动注册）：
 
 ```bash
 php artisan webrtc-ant-media:install
@@ -151,8 +156,11 @@ php artisan vendor:publish --tag="webrtc-ant-media-config"
 将以下内容添加到 `.env`：
 
 ```dotenv
-ANT_MEDIA_URL=https://media.example.com:5443
-ANT_MEDIA_APP=live
+ANT_MEDIA_ORIGIN_URL=https://origin.example.com:5443
+ANT_MEDIA_EDGE_URL=https://edge.example.com:5443
+ANT_MEDIA_APP=LiveApp
+ANT_MEDIA_TEST_APP=WebRTCAppEE
+ANT_MEDIA_USE_TEST_APP=false
 ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
@@ -161,14 +169,46 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 
 | 配置项 | 说明 |
 |---|---|
-| `ANT_MEDIA_URL` | Ant Media Server 基础 URL。HTTPS 使用端口 `5443`，HTTP 使用 `5080`（仅限本地） |
-| `ANT_MEDIA_APP` | 应用名称，例如 `live`、`WebRTCAppEE` 或你的自定义应用 |
+| `ANT_MEDIA_ORIGIN_URL` | 源站（origin）服务器 URL。所有 REST 调用和 WebRTC 推流都发往这里。HTTPS 使用端口 `5443`，HTTP 使用 `5080`（仅限本地）。仍可使用 `ANT_MEDIA_URL` 作为别名 |
+| `ANT_MEDIA_EDGE_URL` | 可选，边缘（edge）服务器或边缘负载均衡器，用于播放 URL。留空则使用源站 |
+| `ANT_MEDIA_APP` | 主应用名称，例如 `LiveApp`、`WebRTCAppEE`、`live` 或基于 StreamApp 构建的自定义应用 |
+| `ANT_MEDIA_TEST_APP` | 可选，用于测试流的第二个应用，供 `AntMedia::test()` 使用 |
+| `ANT_MEDIA_USE_TEST_APP` | 设为 `true` 时所有调用都发往测试应用（适合本地 / 预发布环境） |
 | `ANT_MEDIA_JWT_SECRET` | 来自 **Application Settings > JWT REST API Filter** 的密钥（HS256） |
 | `ANT_MEDIA_STREAM_JWT_SECRET` | 用于签发推流 / 播放令牌的密钥 |
 | `ANT_MEDIA_TIMEOUT` | HTTP 超时时间（秒） |
+| `ANT_MEDIA_RETRIES` | 失败的 GET 请求的重试次数（POST / PUT / DELETE 从不重试）。默认 `1` |
 | `ANT_MEDIA_WEBHOOK_SECRET` | 用于校验传入 Webhook 的共享密钥 |
 
+测试应用的可选覆盖项（未设置时各自回退到主配置的值）：`ANT_MEDIA_TEST_ORIGIN_URL`、`ANT_MEDIA_TEST_EDGE_URL`、`ANT_MEDIA_TEST_JWT_SECRET`、`ANT_MEDIA_TEST_STREAM_JWT_SECRET`。
+
 **认证。** Ant Media 应用的 REST 端点默认只接受来自 `127.0.0.1` 的请求（IP 过滤）。如果 Laravel 后端部署在远程服务器，请在 Ant Media Web 管理面板中启用 **JWT REST API Filter** 并设置上面的密钥。扩展包会签发带有 `exp` 声明的短时效 HS256 令牌，并在每次请求中以 `Authorization: Bearer {token}` 发送。
+
+<a id="origin-edge-main-app-and-test-app"></a>
+
+### 源站、边缘、主应用与测试应用
+
+```php
+use AshrafBendary\WebRtcAntMedia\Facades\AntMedia;
+
+AntMedia::broadcasts()->create(['name' => 'Live']);          // 主应用（ANT_MEDIA_APP）
+AntMedia::test()->broadcasts()->create(['name' => 'Try']);   // 测试应用（ANT_MEDIA_TEST_APP）
+AntMedia::main()->broadcasts()->list();                      // 主应用，即使 ANT_MEDIA_USE_TEST_APP=true
+AntMedia::app('WebRTCAppEE')->broadcasts()->count();         // 同一服务器上的任意其他应用
+
+AntMedia::appName();   // "LiveApp"（当 ANT_MEDIA_USE_TEST_APP=true 时为测试应用）
+```
+
+- REST API 调用和 WebRTC **推流** 始终使用 **源站** 服务器。
+- **播放** URL（WebRTC 播放、HLS、嵌入式播放器、录像）使用 **边缘** 服务器；未设置边缘时使用源站。
+
+<a id="streamapp-and-the-conference-application"></a>
+
+### StreamApp 与会议应用
+
+旧的 [conference-call-application](https://github.com/ant-media/conference-call-application)（Circle）仓库已于 2026 年 8 月 31 日归档。[StreamApp](https://github.com/ant-media/StreamApp) 是 Ant Media Server 当前的基础应用：默认应用（`LiveApp`、`WebRTCAppEE`、`live`）和自定义应用都基于它构建，并且它自带会议示例（`conference.html`、`multitrack-conference.html`）。
+
+StreamApp **并不能** 逐项替代 Circle UI 的全部功能：它的会议页面支持加入 / 离开、推流 / 播放、屏幕共享、静音与摄像头开关以及数据通道聊天，但没有现成的录制按钮、等候室、会议页面中的虚拟背景、表情互动、参会者列表、置顶、分组讨论室或网络研讨会 / 主持管理 UI。本扩展包不依赖其中任何一个 UI：它与 Ant Media REST API 通信，而该 API 对所有应用都相同，因此只需将 `ANT_MEDIA_APP` 设置为你基于 StreamApp 的应用，然后构建你需要的会议 UI 即可。
 
 <a id="quick-start-create-a-video-meeting-room"></a>
 
@@ -192,11 +232,33 @@ $token = AntMedia::tokens()->jwt(
 return view('meeting', compact('room', 'token'));
 ```
 
+或者以 JSON 形式返回前端所需的全部信息（不含任何密钥）：
+
+```php
+return response()->json(AntMedia::urls()->forClient($room->streamId, $token));
+// { streamId, token, app, publishWebSocketUrl, playWebSocketUrl, hlsUrl }
+```
+
 这就是一个 Zoom 风格在线会议室的完整后端。浏览器端使用官方的 [Ant Media WebRTC JavaScript SDK](https://docs.antmedia.io/guides/developer-sdk-and-api/sdk-integration/)。
 
 <a id="usage"></a>
 
 ## 使用方法
+
+<a id="frontend-urls-websocket-hls-player"></a>
+
+### 前端 URL（WebSocket、HLS、播放器）
+
+```php
+AntMedia::urls()->publishWebSocket();              // wss://origin.example.com:5443/LiveApp/websocket
+AntMedia::urls()->playWebSocket();                 // wss://edge.example.com:5443/LiveApp/websocket
+AntMedia::urls()->hls($streamId, $token);          // https://edge.../LiveApp/streams/{id}.m3u8?token=...
+AntMedia::urls()->player($streamId, $token);       // https://edge.../LiveApp/play.html?id=...&token=...
+AntMedia::urls()->recording('stream1.mp4');        // https://edge.../LiveApp/streams/stream1.mp4
+AntMedia::urls()->rtmp($streamId);                 // rtmp://origin.example.com/LiveApp/{id}（OBS）
+AntMedia::urls()->forClient($streamId, $token);    // 供 JS 使用的数组：streamId、token、WebSocket 和 HLS URL
+AntMedia::test()->urls()->playWebSocket();         // 测试应用使用相同的辅助方法
+```
 
 <a id="live-streams-broadcasts"></a>
 
@@ -218,6 +280,8 @@ AntMedia::broadcasts()->list(offset: 0, size: 50, type: 'liveStream', sortBy: 'd
 AntMedia::broadcasts()->update($stream->streamId, ['name' => 'New title']);
 AntMedia::broadcasts()->stop($stream->streamId);
 AntMedia::broadcasts()->delete($stream->streamId);
+$stream->isLive();                                  // status === "broadcasting"
+$stream->get('hlsViewerCount');                     // 任意其他 Ant Media 字段
 AntMedia::broadcasts()->deleteMany(['id1', 'id2']);
 AntMedia::broadcasts()->count();
 AntMedia::broadcasts()->activeCount();
@@ -232,6 +296,8 @@ AntMedia::broadcasts()->info($stream->streamId);   // 宽度、高度、码率�
 
 ```php
 $room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // 自定义房间 ID
+AntMedia::rooms()->get('class-7a');
 
 AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
@@ -241,6 +307,7 @@ AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'pati
 
 // 为所有人结束会议
 AntMedia::rooms()->end($room->streamId);   // 停止主轨道及所有子轨道
+AntMedia::rooms()->delete($room->streamId); // 删除房间及其子轨道
 ```
 
 <a id="secure-access-tokens-jwt-one-time-token-totp"></a>
@@ -250,8 +317,11 @@ AntMedia::rooms()->end($room->streamId);   // 停止主轨道及所有子轨道
 控制谁可以 **推流**（摄像头 / 麦克风）以及谁可以 **播放**（观看）。
 
 ```php
-// JWT 令牌（推荐），在本地签发，无需请求服务器
+// JWT 令牌（推荐），使用 ANT_MEDIA_STREAM_JWT_SECRET 在本地签发，无需请求服务器
 $jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour());
+
+// 改由 Ant Media 签发（当 ANT_MEDIA_STREAM_JWT_SECRET 为空时也会自动使用此方式）
+$jwt = AntMedia::tokens()->jwt($streamId, type: 'play', expiresAt: now()->addHour(), fromServer: true);
 
 // 由 Ant Media Server 生成的一次性令牌
 $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: now()->addMinutes(30));
@@ -259,7 +329,7 @@ $oneTime = AntMedia::tokens()->oneTime($streamId, type: 'publish', expiresAt: no
 // 为订阅者生成 TOTP
 $totp = AntMedia::subscribers()->totp($streamId, subscriberId: 'user_42', type: 'publish');
 
-AntMedia::tokens()->validate($token);
+AntMedia::tokens()->validate($token, $streamId, type: 'play');   // bool
 AntMedia::tokens()->list($streamId);
 AntMedia::tokens()->revokeAll($streamId);
 ```
@@ -295,8 +365,11 @@ AntMedia::vods()->count();
 ### 转推到 YouTube、Facebook、RTMP 和 SRT
 
 ```php
-AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result = AntMedia::endpoints()->add($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
+$result->dataId;   // 端点服务 ID
 AntMedia::endpoints()->add($streamId, 'srt://ingest.example.com:9000', resolutionHeight: 720);
+
+// 按添加时的 URL 或端点服务 ID 移除
 AntMedia::endpoints()->remove($streamId, 'rtmp://a.rtmp.youtube.com/live2/YOUR-KEY');
 ```
 
@@ -365,11 +438,13 @@ AntMedia::broadcasts()->start($camera->streamId);      // 开始拉取流源
 
 ### Webhook 与 Laravel 事件
 
-将 Ant Media 的 **Application Settings > Webhook URL** 指向：
+将 Ant Media 的 **Application Settings > Webhook URL** 指向（该路由会自动注册）：
 
 ```
-https://your-app.com/ant-media/webhook
+https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
+
+`secret` 错误的请求会被以 HTTP 403 拒绝。Ant Media 可以用表单数据或 JSON 发送 Webhook，两种方式均受支持。
 
 监听原生 Laravel 事件：
 
@@ -381,13 +456,31 @@ use AshrafBendary\WebRtcAntMedia\Events\RecordingReady;
 Event::listen(LiveStreamStarted::class, fn ($e) => logger("Meeting started: {$e->streamId}"));
 Event::listen(LiveStreamEnded::class,   fn ($e) => logger("Meeting ended: {$e->streamId}"));
 Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e->vodId}"));
+
+// 所有 Webhook 动作（playStarted、subtrackAddedInTheMainTrack、endpointFailed 等）
+use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
+
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
 ```
+
+<a id="endpoints-that-are-not-wrapped"></a>
+
+### 未封装的端点
+
+可以通过底层客户端调用任何其他 Ant Media 端点（认证、基础 URL 和应用均会自动处理）：
+
+```php
+AntMedia::client()->get("broadcasts/{$streamId}/ip-camera-error");
+AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
+```
+
+所有失败的请求（HTTP 4xx / 5xx）都会抛出 `AshrafBendary\WebRtcAntMedia\Exceptions\AntMediaException`；对不存在的流调用 `get()` 会返回 `null`。
 
 <a id="rest-api-coverage"></a>
 
 ## REST API 覆盖范围
 
-所有调用均指向 `{ANT_MEDIA_URL}/{ANT_MEDIA_APP}/rest/v2/...`。完整的接口定义参见：[Ant Media Swagger](https://antmedia.io/rest/)。
+所有调用均指向 `{ANT_MEDIA_ORIGIN_URL}/{ANT_MEDIA_APP}/rest/v2/...`（或测试应用）。完整的接口定义参见：[Ant Media Swagger](https://antmedia.io/rest/)。
 
 | 扩展包方法 | HTTP | Ant Media 端点 |
 |---|---|---|
@@ -408,6 +501,8 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 | `rooms()->participants()` | GET | `/broadcasts/{id}/subtracks/{offset}/{size}` |
 | `rooms()->activeParticipants()` | GET | `/broadcasts/{id}/active-subtracks/{offset}/{size}` |
 | `rooms()->activeParticipantsCount()` | GET | `/broadcasts/{id}/active-subtracks-count` |
+| `rooms()->end()` | POST | `/broadcasts/{id}/stop?stopSubtracks=true` |
+| `rooms()->delete()` | DELETE | `/broadcasts/{id}?deleteSubtracks=true` |
 | `tokens()->oneTime()` | GET | `/broadcasts/{id}/token` |
 | `tokens()->jwt()` (server mode) | GET | `/broadcasts/{id}/jwt-token` |
 | `tokens()->list()` | GET | `/broadcasts/{id}/tokens/list/{offset}/{size}` |
@@ -427,6 +522,8 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 | `stats()->broadcast()` | GET | `/broadcasts/{id}/broadcast-statistics` |
 | `stats()->total()` | GET | `/broadcasts/total-broadcast-statistics` |
 | `stats()->webrtcClients()` | GET | `/broadcasts/{id}/webrtc-client-stats/{offset}/{size}` |
+| `stats()->lowLevelSend()` | GET | `/broadcasts/webrtc-send-low-level-stats` |
+| `stats()->lowLevelReceive()` | GET | `/broadcasts/webrtc-receive-low-level-stats` |
 | `cameras()->discover()` | GET | `/broadcasts/onvif-devices` |
 | `cameras()->profiles()` | GET | `/broadcasts/{id}/ip-camera/device-profiles` |
 | `cameras()->move()` | POST | `/broadcasts/{id}/ip-camera/move` |
@@ -490,7 +587,13 @@ Web 端支持 Blade、Livewire、Inertia、Vue、React 和原生 JavaScript；�
 可以。所有调用均使用 Laravel HTTP 客户端，可以安全地在队列任务中运行。
 
 **是否支持 Ant Media Server 集群模式？**
-支持。将 `ANT_MEDIA_URL` 指向你的集群负载均衡器或源站即可。
+支持。将 `ANT_MEDIA_ORIGIN_URL` 设置为你的源站（或源站负载均衡器），并将 `ANT_MEDIA_EDGE_URL` 设置为你的边缘负载均衡器。
+
+**StreamApp 是 conference-call-application 的替代品吗？**
+StreamApp 是当前的基础应用，conference-call-application 仓库也已归档，但 StreamApp 并不具备其全部 UI 功能。参见 [StreamApp 与会议应用](#streamapp-and-the-conference-application)。
+
+**如何在不影响生产环境流的情况下进行测试？**
+设置 `ANT_MEDIA_TEST_APP`，然后使用 `AntMedia::test()`；或者在本地 / 预发布环境的 `.env` 中设置 `ANT_MEDIA_USE_TEST_APP=true`。
 
 <a id="testing"></a>
 

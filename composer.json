@@ -1,0 +1,60 @@
+{
+    "name": "ashrafbendary/laravel-webrtc-ant-media",
+    "description": "Simple Laravel package for the Ant Media Server REST API: live streams, video meeting rooms, tokens, recording, VoD, restream and webhooks, with origin/edge and main/test application support.",
+    "keywords": [
+        "laravel",
+        "ant-media",
+        "antmedia",
+        "webrtc",
+        "video-conference",
+        "live-streaming",
+        "streamapp"
+    ],
+    "homepage": "https://github.com/ashrafbendary/laravel-webrtc-ant-media",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ashraf Bendary",
+            "homepage": "https://github.com/ashrafbendary"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^10.5|^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "AshrafBendary\\WebRtcAntMedia\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AshrafBendary\\WebRtcAntMedia\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "AshrafBendary\\WebRtcAntMedia\\AntMediaServiceProvider"
+            ],
+            "aliases": {
+                "AntMedia": "AshrafBendary\\WebRtcAntMedia\\Facades\\AntMedia"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
