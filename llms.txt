@@ -25,6 +25,7 @@ License: MIT
 - [README (Türkçe)](README.tr.md)
 - [README (日本語)](README.ja.md)
 - [README (简体中文)](README.zh-CN.md)
+- [China mirror on GitCode (auto-synced)](https://gitcode.com/ashrafbendary/laravel-webrtc-ant-media)
 - [AGENTS.md](AGENTS.md): rules for AI coding agents using this package
 - [Ant Media REST API guide](https://docs.antmedia.io/guides/developer-sdk-and-api/rest-api-guide/)
 - [Ant Media Swagger reference](https://antmedia.io/rest/)

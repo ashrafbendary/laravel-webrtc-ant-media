@@ -2,6 +2,8 @@
 
 [English](README.md) | [العربية](README.ar.md) | [اردو](README.ur.md) | [हिन्दी](README.hi.md) | [Türkçe](README.tr.md) | [日本語](README.ja.md) | **简体中文**
 
+> 🇨🇳 **国内镜像（访问更快）：** [gitcode.com/ashrafbendary/laravel-webrtc-ant-media](https://gitcode.com/ashrafbendary/laravel-webrtc-ant-media)，与 GitHub 仓库自动同步。
+
 ### 用 Laravel 构建类似 Zoom、Google Meet 或 Microsoft Teams 的视频会议应用。基于 Ant Media Server，支持私有化部署（自托管）、可扩展的 WebRTC 视频会议、低延迟直播与会议录制。
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ashrafbendary/laravel-webrtc-ant-media.svg?style=flat-square)](https://packagist.org/packages/ashrafbendary/laravel-webrtc-ant-media)
