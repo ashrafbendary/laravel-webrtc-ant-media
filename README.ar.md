@@ -163,6 +163,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | المفتاح | الوصف |
@@ -176,7 +177,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | المفتاح السري لتوقيع رموز النشر / التشغيل الخاصة بالبث |
 | `ANT_MEDIA_TIMEOUT` | مهلة HTTP بالثواني |
 | `ANT_MEDIA_RETRIES` | عدد مرات إعادة المحاولة لطلبات GET الفاشلة (لا يُعاد إرسال طلبات POST / PUT / DELETE أبدًا). القيمة الافتراضية `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | مفتاح سري مشترك للتحقق من طلبات الـ webhook الواردة |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **إلزامي.** مفتاح سري مشترك يُضمَّن في عنوان URL الخاص بالـ webhook. ما دام فارغًا، يُرفض كل طلب webhook |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | اختياري، ويُوصى به. عناوين IP أو نطاقات CIDR لخوادم Ant Media لديك، مفصولة بفواصل؛ ويُرفض أي webhook يصل من عنوان IP آخر. إذا كان التطبيق خلف موازن أحمال (load balancer)، فاضبط إعدادات trusted proxies في Laravel أولًا |
 
 إعدادات اختيارية خاصة بتطبيق الاختبار (يعود كل منها إلى القيمة الرئيسية إذا لم يُضبط): `ANT_MEDIA_TEST_ORIGIN_URL` و `ANT_MEDIA_TEST_EDGE_URL` و `ANT_MEDIA_TEST_JWT_SECRET` و `ANT_MEDIA_TEST_STREAM_JWT_SECRET`.
 
@@ -293,15 +295,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // العرض والارتف�
 غرفة الاجتماع هي مسار رئيسي (main track)، وكل مشارك ينشر مسارًا فرعيًا (subtrack).
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // اختر معرّف الغرفة بنفسك
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // إنهاء الاجتماع للجميع
 AntMedia::rooms()->end($room->streamId);   // يوقف المسار الرئيسي والمسارات الفرعية
@@ -337,7 +339,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### التسجيل (MP4 / WebM)
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // تحويل تسجيل HLS إلى MP4
@@ -422,7 +424,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // اكتشاف أجهزة ONVIF
@@ -442,7 +444,7 @@ AntMedia::broadcasts()->start($camera->streamId);      // بدء سحب مصدر
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-تُرفض الطلبات التي تحمل قيمة `secret` خاطئة برمز الحالة HTTP 403. يمكن لـ Ant Media إرسال الـ webhook بصيغة بيانات نموذج (form data) أو JSON، وكلتاهما مدعومة.
+تُرفض برمز الحالة HTTP 403 الطلبات التي تحمل قيمة `secret` خاطئة أو لا تحملها أصلًا، أو التي تصل من عنوان IP خارج `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` (عند ضبطه). لا يوقّع Ant Media طلبات الـ webhook، لذا اضبط الإعدادين كليهما. يمكن لـ Ant Media إرسال الـ webhook بصيغة بيانات نموذج (form data) أو JSON، وكلتاهما مدعومة.
 
 استمع إلى أحداث Laravel الأصلية:
 
@@ -458,7 +460,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // كل إجراءات الـ webhook (playStarted و subtrackAddedInTheMainTrack و endpointFailed وغيرها)
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 <a id="endpoints-that-are-not-wrapped"></a>
@@ -542,12 +544,17 @@ AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
 
 الإعداد الموصى به:
 
-- شغّل Ant Media Server في المنطقة المطلوبة (مثل AWS Middle East أو Google Cloud Dammam أو Oracle Cloud Jeddah أو مناطق الاتحاد الأوروبي أو خوادم محلية on-premise)
+- شغّل Ant Media Server في المنطقة التي يفرضها قانون حماية البيانات المنطبق عليك. للبيانات الشخصية والصحية السعودية، استخدم منطقة داخل المملكة العربية السعودية (مثل Google Cloud Dammam أو Oracle Cloud Jeddah أو خوادم محلية on-premise؛ ومن المخطط إطلاق منطقة AWS في المملكة العربية السعودية في ديسمبر 2026). تقع منطقتا AWS في البحرين والإمارات خارج المملكة، لذا يُعدّ استخدامهما نقلًا للبيانات عبر الحدود بموجب نظام حماية البيانات الشخصية PDPL. أما بيانات الاتحاد الأوروبي، فاستخدم لها مناطق الاتحاد الأوروبي
 - استخدم HTTPS على المنفذ `5443` مع شهادة SSL صالحة
 - فعّل **JWT REST API Filter**؛ ولا تكشف واجهة REST API للعامة معتمدًا على فلترة عنوان IP وحدها
 - فعّل **حماية رموز النشر / التشغيل** للبث في كل اجتماع
 - اجعل صلاحية الرموز قصيرة عبر `exp`، وألغِ الرموز والمشتركين عند انتهاء الاجتماع
 - خزّن التسجيلات في مساحة تخزين مشفّرة، وسجّل من اطّلع عليها
+- وثّق موافقة المشارك (الغرض، والإصدار، والطابع الزمني) قبل بدء التسجيل، واستخدم أسماء ملفات عشوائية، واحذف التسجيلات وفق جدول زمني للاحتفاظ بالبيانات
+- اجعل عرض قائمة التسجيلات أو تنزيلها صلاحية مستقلة يُسجَّل استخدامها، وتأكد من أن حماية رموز التشغيل تشمل أيضًا عناوين URL الخاصة بالتسجيلات (`/{app}/streams/...`)
+- لا تضع أسماء المرضى أو الطلاب أو أرقامهم التعريفية في أسماء البث أو معرّفات البث أو أسماء الملفات؛ استخدم معرّفات عشوائية واربطها بأصحابها في قاعدة بياناتك الخاصة
+- لا تمرّر مدخلات الطلب مباشرة إلى `broadcasts()->create()` أو `broadcasts()->update()` أو `endpoints()->add()`: إذ يمكن إساءة استغلال عناوين URL لمصدر البث وإعادة البث (restream) للوصول إلى خوادم داخلية أو نسخ الاجتماع إلى الخارج
+- استضف Ant Media JavaScript SDK ذاتيًا، وشغّل خادم STUN/TURN خاصًا بك في المنطقة نفسها؛ واسمح بالكاميرا والميكروفون وأصل (origin) خادم Ant Media لديك (عبر Permissions-Policy وCSP) في صفحات الاجتماعات فقط
 
 <a id="using-this-package-with-ai-coding-assistants"></a>
 

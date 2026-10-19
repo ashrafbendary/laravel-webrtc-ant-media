@@ -23,7 +23,15 @@ A Laravel wrapper for the Ant Media Server REST API (`{ANT_MEDIA_URL}/{ANT_MEDIA
 - Never put `ANT_MEDIA_JWT_SECRET` or `ANT_MEDIA_STREAM_JWT_SECRET` in JavaScript, Blade output or API responses.
 - Give tokens a short `exp` and authorize the Laravel user before issuing one (policies/gates).
 - Use HTTPS (port 5443) in production. Port 5080 HTTP is for local testing only.
-- For healthcare or personal data, host Ant Media Server in the required region and store recordings encrypted.
+- For healthcare or personal data, host Ant Media Server in the required region and store recordings encrypted. For Saudi data that means a KSA region (AWS Bahrain/UAE are cross-border under PDPL).
+- Rate-limit the app route that issues tokens, and return a token only for a room the current user may join (no IDOR on room or stream IDs).
+- Webhooks: always set `ANT_MEDIA_WEBHOOK_SECRET` (the route rejects everything without it) and `ANT_MEDIA_WEBHOOK_ALLOWED_IPS`. Ant Media does not sign webhooks.
+- Never pass request input straight into `broadcasts()->create()`, `broadcasts()->update()` or `endpoints()->add()`. Build the array yourself from validated fields; `streamUrl`, `ipAddr`, `listenerHookURL` and restream URLs can be abused for SSRF or to copy a meeting to an outside server. Allow-list restream hosts.
+- Keep personal data out of stream names, stream IDs, room IDs and recording file names. Use random IDs and map them in your own database.
+- Before `recordings()->start()`, store the participant's consent (purpose, version, channel, timestamp). Delete recordings with a scheduled retention job.
+- Listing or downloading recordings (`vods()`, `urls()->recording()`) is a separate permission from joining a meeting. Log every access with actor id, record id, action, timestamp and IP only (no names, no payloads).
+- Do not log webhook payloads or `$broadcast->toArray()`; they can contain stream names. Keep audit logs for at least 12 months (NCA ECC).
+- Frontend: self-host the Ant Media JavaScript SDK (no public CDN), use your own STUN/TURN server in the same region, and allow camera, microphone and the Ant Media origin (Permissions-Policy and CSP `connect-src` / `media-src`) only on meeting pages.
 
 ## Do not invent
 

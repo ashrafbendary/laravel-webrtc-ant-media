@@ -46,7 +46,8 @@ ANT_MEDIA_TEST_APP=WebRTCAppEE                         # optional test applicati
 ANT_MEDIA_USE_TEST_APP=false                           # true = every call goes to the test app
 ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
-ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret           # required, webhooks are rejected while empty
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5                 # recommended, IPs/CIDRs of your Ant Media servers
 ```
 
 ## Minimal meeting room
@@ -83,4 +84,4 @@ The ant-media/conference-call-application (Circle) repo was archived on Aug 31, 
 ## Optional
 
 - Multi-party conferencing and ultra-low latency WebRTC at scale are Ant Media Enterprise features; check Ant Media licensing.
-- Data residency: self-hosting helps with GDPR, HIPAA, Saudi PDPL and similar laws, but compliance depends on the full deployment.
+- Data residency: self-hosting helps with GDPR, HIPAA, Saudi PDPL and similar laws, but compliance depends on the full deployment. For Saudi data use a KSA region; see AGENTS.md for the security rules (consent before recording, random IDs, no request input in stream/restream URLs).

@@ -163,6 +163,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | Key | विवरण |
@@ -176,7 +177,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | publish / play स्ट्रीम टोकन साइन करने के लिए secret |
 | `ANT_MEDIA_TIMEOUT` | सेकंड में HTTP timeout |
 | `ANT_MEDIA_RETRIES` | फ़ेल हुई GET रिक्वेस्ट के लिए retries (POST / PUT / DELETE कभी retry नहीं होतीं)। डिफ़ॉल्ट `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | आने वाले webhooks को वेरिफ़ाई करने के लिए shared secret |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **ज़रूरी।** webhook URL में दिया जाने वाला shared secret। जब तक यह ख़ाली है, हर webhook अस्वीकार कर दिया जाता है |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | वैकल्पिक, सुझाया गया। आपके Ant Media सर्वर्स के IPs या CIDRs, कॉमा से अलग किए हुए; किसी भी दूसरे IP से आने वाले webhooks अस्वीकार कर दिए जाते हैं। load balancer के पीछे होने पर पहले Laravel trusted proxies कॉन्फ़िगर कीजिए |
 
 वैकल्पिक टेस्ट-ऐप overrides (हर एक न होने पर मुख्य वैल्यू इस्तेमाल होती है): `ANT_MEDIA_TEST_ORIGIN_URL`, `ANT_MEDIA_TEST_EDGE_URL`, `ANT_MEDIA_TEST_JWT_SECRET`, `ANT_MEDIA_TEST_STREAM_JWT_SECRET`।
 
@@ -293,15 +295,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // width, height, bitrate, co
 एक मीटिंग रूम एक main track होता है। हर प्रतिभागी एक subtrack पब्लिश करता है।
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // अपनी पसंद का रूम id चुनिए
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // सभी के लिए मीटिंग समाप्त कीजिए
 AntMedia::rooms()->end($room->streamId);   // main track और subtracks को रोक देता है
@@ -337,7 +339,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### रिकॉर्डिंग (MP4 / WebM)
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // HLS रिकॉर्डिंग को MP4 में बदलिए
@@ -422,7 +424,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // ONVIF discovery
@@ -442,7 +444,7 @@ Ant Media में **Application Settings > Webhook URL** को इस पत�
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-ग़लत `secret` वाली रिक्वेस्ट HTTP 403 के साथ अस्वीकार कर दी जाती हैं। Ant Media webhook को form data या JSON के रूप में भेज सकता है; दोनों काम करते हैं।
+ग़लत या ग़ायब `secret` वाली रिक्वेस्ट, या `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` (अगर सेट हो) से बाहर के IP से आने वाली रिक्वेस्ट, HTTP 403 के साथ अस्वीकार कर दी जाती हैं। Ant Media webhooks को साइन नहीं करता, इसलिए दोनों सेट कीजिए। Ant Media webhook को form data या JSON के रूप में भेज सकता है; दोनों काम करते हैं।
 
 native Laravel events को सुनिए:
 
@@ -458,7 +460,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // हर webhook action (playStarted, subtrackAddedInTheMainTrack, endpointFailed, ...)
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 <a id="endpoints-that-are-not-wrapped"></a>
@@ -542,12 +544,17 @@ AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
 
 सुझाया गया सेटअप:
 
-- Ant Media Server को अपने ज़रूरी रीजन में चलाइए (जैसे AWS Middle East, Google Cloud Dammam, Oracle Cloud Jeddah, EU रीजन या on-premise)
+- Ant Media Server को उस रीजन में चलाइए जो आपका डेटा क़ानून माँगता है। सऊदी पर्सनल और हेल्थ डेटा के लिए KSA रीजन इस्तेमाल कीजिए (जैसे Google Cloud Dammam, Oracle Cloud Jeddah या on-premise; AWS Saudi Arabia रीजन दिसंबर 2026 के लिए प्लान किया गया है)। AWS Bahrain और UAE, KSA से बाहर हैं, इसलिए उन्हें इस्तेमाल करना PDPL के तहत cross-border transfer है। EU डेटा के लिए EU रीजन इस्तेमाल कीजिए
 - वैध SSL सर्टिफ़िकेट के साथ पोर्ट `5443` पर HTTPS इस्तेमाल कीजिए
 - **JWT REST API Filter** चालू कीजिए; REST API को सिर्फ़ IP के भरोसे कभी पब्लिक मत कीजिए
 - हर मीटिंग के लिए स्ट्रीम की **publish / play टोकन सिक्योरिटी** चालू कीजिए
 - टोकन को छोटा `exp` दीजिए, और मीटिंग ख़त्म होने पर टोकन और सब्सक्राइबर्स को revoke कीजिए
 - रिकॉर्डिंग को एन्क्रिप्टेड स्टोरेज में रखिए और लॉग कीजिए कि किसने उन्हें एक्सेस किया
+- रिकॉर्डिंग शुरू करने से पहले प्रतिभागी की सहमति (उद्देश्य, वर्ज़न, timestamp) रिकॉर्ड कीजिए, रैंडम फ़ाइल नाम इस्तेमाल कीजिए, और retention शेड्यूल के अनुसार रिकॉर्डिंग डिलीट कीजिए
+- रिकॉर्डिंग की लिस्टिंग या डाउनलोड को एक अलग, लॉग की जाने वाली permission बनाइए, और पक्का कीजिए कि play टोकन सिक्योरिटी रिकॉर्डिंग URLs (`/{app}/streams/...`) को भी कवर करती है
+- मरीज़ों या छात्रों के नाम और IDs को स्ट्रीम नामों, स्ट्रीम IDs और फ़ाइल नामों से बाहर रखिए; रैंडम IDs इस्तेमाल कीजिए और उन्हें अपने डेटाबेस में मैप कीजिए
+- रिक्वेस्ट इनपुट को कभी सीधे `broadcasts()->create()`, `broadcasts()->update()` या `endpoints()->add()` में मत भेजिए: स्ट्रीम source और restream URLs का दुरुपयोग इंटरनल सर्वर्स तक पहुँचने या मीटिंग को बाहर कॉपी करने के लिए किया जा सकता है
+- Ant Media JavaScript SDK को सेल्फ-होस्ट कीजिए और उसी रीजन में अपना STUN/TURN सर्वर चलाइए; कैमरा, माइक्रोफ़ोन और अपने Ant Media origin (Permissions-Policy और CSP) की अनुमति सिर्फ़ मीटिंग पेजों पर दीजिए
 
 <a id="using-this-package-with-ai-coding-assistants"></a>
 

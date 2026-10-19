@@ -25,6 +25,7 @@ ANT_MEDIA_USE_TEST_APP=false
 ANT_MEDIA_JWT_SECRET=
 ANT_MEDIA_STREAM_JWT_SECRET=
 ANT_MEDIA_WEBHOOK_SECRET=
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=
 ENV);
         $this->newLine();
         $this->info('Webhook URL for Ant Media: '.url(config('webrtc-ant-media.webhook.path', 'ant-media/webhook')).'?secret=ANT_MEDIA_WEBHOOK_SECRET');

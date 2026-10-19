@@ -163,6 +163,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | Anahtar | Açıklama |
@@ -176,7 +177,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | Publish / play yayın token'larını imzalamak için kullanılan secret |
 | `ANT_MEDIA_TIMEOUT` | Saniye cinsinden HTTP zaman aşımı |
 | `ANT_MEDIA_RETRIES` | Başarısız GET istekleri için yeniden deneme sayısı (POST / PUT / DELETE asla yeniden denenmez). Varsayılan `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | Gelen webhook'ları doğrulamak için kullanılan paylaşımlı secret |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **Zorunlu.** Webhook URL'sinde yer alan paylaşımlı secret. Boş olduğu sürece tüm webhook'lar reddedilir |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | İsteğe bağlı, önerilir. Ant Media sunucularınızın virgülle ayrılmış IP'leri veya CIDR'ları; başka herhangi bir IP'den gelen webhook'lar reddedilir. Bir load balancer arkasındaysanız önce Laravel trusted proxies ayarını yapılandırın |
 
 İsteğe bağlı test uygulaması geçersiz kılmaları (her biri ayarlanmazsa ana değer kullanılır): `ANT_MEDIA_TEST_ORIGIN_URL`, `ANT_MEDIA_TEST_EDGE_URL`, `ANT_MEDIA_TEST_JWT_SECRET`, `ANT_MEDIA_TEST_STREAM_JWT_SECRET`.
 
@@ -293,15 +295,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // genişlik, yükseklik, bit
 Bir toplantı odası, bir ana track'tir (main track). Her katılımcı bir alt track (subtrack) yayınlar.
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // kendi oda id'nizi seçin
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // Toplantıyı herkes için sonlandırın
 AntMedia::rooms()->end($room->streamId);   // ana track'i ve alt track'leri durdurur
@@ -337,7 +339,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### Toplantı kaydı (MP4 / WebM)
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // Bir HLS kaydını MP4'e dönüştürün
@@ -422,7 +424,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // ONVIF keşfi
@@ -442,7 +444,7 @@ Ant Media'da **Application Settings > Webhook URL** ayarını şu adrese yönlen
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-Yanlış `secret` içeren istekler HTTP 403 ile reddedilir. Ant Media webhook'u form verisi veya JSON olarak gönderebilir; ikisi de çalışır.
+Yanlış veya eksik `secret` içeren ya da (ayarlanmışsa) `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` dışındaki bir IP'den gelen istekler HTTP 403 ile reddedilir. Ant Media webhook'ları imzalamaz, bu yüzden ikisini de ayarlayın. Ant Media webhook'u form verisi veya JSON olarak gönderebilir; ikisi de çalışır.
 
 Yerel (native) Laravel event'lerini dinleyin:
 
@@ -458,7 +460,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // Tüm webhook action'ları (playStarted, subtrackAddedInTheMainTrack, endpointFailed, ...)
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 <a id="endpoints-that-are-not-wrapped"></a>
@@ -542,12 +544,17 @@ Ant Media Server kendi sunucunuzda barındırıldığı için videoların ve kay
 
 Önerilen kurulum:
 
-- Ant Media Server'ı ihtiyaç duyduğunuz bölgede çalıştırın (örneğin AWS Middle East, Google Cloud Dammam, Oracle Cloud Jeddah, AB bölgeleri veya şirket içi/on-premise)
+- Ant Media Server'ı veri mevzuatınızın gerektirdiği bölgede çalıştırın. Suudi Arabistan'a ait kişisel ve sağlık verileri için bir KSA bölgesi kullanın (örneğin Google Cloud Dammam, Oracle Cloud Jeddah veya şirket içi/on-premise; AWS Saudi Arabia bölgesinin Aralık 2026'da açılması planlanmaktadır). AWS Bahrain ve UAE bölgeleri KSA dışındadır, bu nedenle bunları kullanmak PDPL kapsamında sınır ötesi veri aktarımı sayılır. AB verileri için AB bölgelerini kullanın
 - Geçerli bir SSL sertifikasıyla `5443` portunda HTTPS kullanın
 - **JWT REST API Filter** seçeneğini etkinleştirin; REST API'yi asla yalnızca IP kısıtlamasına güvenerek herkese açık hale getirmeyin
 - Her toplantı için **publish / play token güvenliğini** etkinleştirin
 - Token'lara kısa bir `exp` süresi verin ve toplantı bittiğinde token'ları ve aboneleri iptal edin
 - Kayıtları şifrelenmiş depolama alanında saklayın ve bunlara kimin eriştiğini loglayın
+- Kayda başlamadan önce katılımcının onayını (amaç, sürüm, zaman damgası) kaydedin, rastgele dosya adları kullanın ve kayıtları bir saklama takvimine göre silin
+- Kayıtları listelemeyi veya indirmeyi ayrı ve loglanan bir yetki haline getirin, play token güvenliğinin kayıt URL'lerini (`/{app}/streams/...`) de kapsadığından emin olun
+- Hasta veya öğrenci adlarını ve kimliklerini yayın adlarında, stream ID'lerinde ve dosya adlarında kullanmayın; rastgele ID'ler kullanın ve bunları kendi veritabanınızda eşleştirin
+- İstek girdisini asla doğrudan `broadcasts()->create()`, `broadcasts()->update()` veya `endpoints()->add()` metotlarına aktarmayın: yayın kaynağı ve restream URL'leri iç sunuculara erişmek veya bir toplantıyı dışarıya kopyalamak için kötüye kullanılabilir
+- Ant Media JavaScript SDK'sını kendiniz barındırın ve aynı bölgede kendi STUN/TURN sunucunuzu çalıştırın; kameraya, mikrofona ve Ant Media origin'inize (Permissions-Policy ve CSP) yalnızca toplantı sayfalarında izin verin
 
 <a id="using-this-package-with-ai-coding-assistants"></a>
 

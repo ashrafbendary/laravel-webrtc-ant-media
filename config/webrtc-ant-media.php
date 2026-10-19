@@ -80,12 +80,18 @@ return [
     | Set Ant Media Application Settings > Webhook URL to:
     | https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
     |
+    | secret:      required. While it is empty every webhook is rejected (403).
+    | allowed_ips: comma-separated IPs / CIDRs of your Ant Media servers. When
+    |              set, webhooks from any other IP are rejected (403). Behind a
+    |              load balancer, configure Laravel's trusted proxies first.
+    |
     */
 
     'webhook' => [
         'enabled' => (bool) env('ANT_MEDIA_WEBHOOK_ENABLED', true),
         'path' => 'ant-media/webhook',
         'secret' => env('ANT_MEDIA_WEBHOOK_SECRET'),
+        'allowed_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('ANT_MEDIA_WEBHOOK_ALLOWED_IPS', ''))))),
         'middleware' => ['api'],
     ],
 
