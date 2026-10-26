@@ -49,3 +49,8 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit
+
+      # Laravel 11 is skipped: it is past security support and always has open advisories.
+      - name: Audit dependencies
+        if: matrix.laravel != '11.*'
+        run: composer audit --no-interaction

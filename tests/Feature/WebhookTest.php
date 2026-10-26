@@ -58,6 +58,30 @@ class WebhookTest extends TestCase
         Event::assertNotDispatched(LiveStreamStarted::class);
     }
 
+    public function test_everything_is_rejected_while_no_secret_is_configured(): void
+    {
+        Event::fake();
+        config()->set('webrtc-ant-media.webhook.secret', null);
+
+        $this->postJson('/ant-media/webhook', ['action' => 'liveStreamEnded', 'id' => 's1'])->assertForbidden();
+        $this->postJson('/ant-media/webhook?secret=', ['action' => 'liveStreamEnded', 'id' => 's1'])->assertForbidden();
+
+        Event::assertNotDispatched(WebhookReceived::class);
+    }
+
+    public function test_ip_allow_list_blocks_other_senders(): void
+    {
+        Event::fake();
+
+        config()->set('webrtc-ant-media.webhook.allowed_ips', ['10.0.0.5']);
+        $this->postJson('/ant-media/webhook?secret=hook-secret', ['action' => 'liveStreamEnded', 'id' => 's1'])->assertForbidden();
+        Event::assertNotDispatched(WebhookReceived::class);
+
+        config()->set('webrtc-ant-media.webhook.allowed_ips', ['10.0.0.5', '127.0.0.0/8']);
+        $this->postJson('/ant-media/webhook?secret=hook-secret', ['action' => 'liveStreamEnded', 'id' => 's1'])->assertOk();
+        Event::assertDispatched(LiveStreamEnded::class);
+    }
+
     public function test_missing_action_is_rejected(): void
     {
         $this->postJson('/ant-media/webhook?secret=hook-secret', ['id' => 's1'])->assertStatus(422);

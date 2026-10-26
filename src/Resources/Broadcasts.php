@@ -17,7 +17,7 @@ class Broadcasts extends Resource
         $response = $this->client->post('broadcasts/create', $data ?: '{}', ['autoStart' => $autoStart ?: null]);
 
         if (! is_array($response) || empty($response['streamId'])) {
-            throw new AntMediaException('Ant Media did not return a broadcast: '.json_encode($response));
+            throw new AntMediaException('Ant Media did not return a broadcast.');
         }
 
         return Broadcast::fromArray($response);

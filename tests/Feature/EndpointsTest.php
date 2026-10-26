@@ -128,6 +128,29 @@ class EndpointsTest extends TestCase
         AntMedia::broadcasts()->count();
     }
 
+    public function test_exception_text_keeps_only_the_json_message(): void
+    {
+        Http::fake(['*' => Http::response(['success' => false, 'message' => 'Stream not found', 'name' => 'Patient Ali'], 500)]);
+
+        try {
+            AntMedia::broadcasts()->stop('s1');
+            $this->fail('Expected AntMediaException');
+        } catch (AntMediaException $e) {
+            $this->assertStringContainsString('Stream not found', $e->getMessage());
+            $this->assertStringNotContainsString('Patient Ali', $e->getMessage());
+            $this->assertSame('Patient Ali', $e->response->json('name'));
+        }
+    }
+
+    public function test_broadcast_never_keeps_the_camera_password(): void
+    {
+        $camera = Broadcast::fromArray(['streamId' => 'c1', 'type' => 'ipCamera', 'username' => 'admin', 'password' => 'p4ss']);
+
+        $this->assertArrayNotHasKey('password', $camera->toArray());
+        $this->assertNull($camera->get('password'));
+        $this->assertStringNotContainsString('p4ss', json_encode($camera));
+    }
+
     public function test_send_message_posts_raw_json(): void
     {
         Http::fake(['*' => Http::response(['success' => true])]);

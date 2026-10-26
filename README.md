@@ -149,6 +149,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | Key | Description |
@@ -162,7 +163,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | Secret for signing publish / play stream tokens |
 | `ANT_MEDIA_TIMEOUT` | HTTP timeout in seconds |
 | `ANT_MEDIA_RETRIES` | Retries for failed GET requests (POST / PUT / DELETE are never retried). Default `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | Shared secret to verify incoming webhooks |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **Required.** Shared secret in the webhook URL. While it is empty, every webhook is rejected |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | Optional, recommended. Comma-separated IPs or CIDRs of your Ant Media servers; webhooks from any other IP are rejected. Behind a load balancer, configure Laravel trusted proxies first |
 
 Optional test-app overrides (each falls back to the main value): `ANT_MEDIA_TEST_ORIGIN_URL`, `ANT_MEDIA_TEST_EDGE_URL`, `ANT_MEDIA_TEST_JWT_SECRET`, `ANT_MEDIA_TEST_STREAM_JWT_SECRET`.
 
@@ -265,15 +267,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // width, height, bitrate, co
 A meeting room is a main track. Each participant publishes a subtrack.
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // choose your own room id
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // End the meeting for everyone
 AntMedia::rooms()->end($room->streamId);   // stops main track and subtracks
@@ -305,7 +307,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### Recording (MP4 / WebM)
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // Convert an HLS recording to MP4
@@ -378,7 +380,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // ONVIF discovery
@@ -396,7 +398,7 @@ Point Ant Media **Application Settings > Webhook URL** to (the route is register
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-Requests with a wrong `secret` are rejected with HTTP 403. Ant Media can send the webhook as form data or JSON; both work.
+Requests with a wrong or missing `secret`, or from an IP outside `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` (when set), are rejected with HTTP 403. Ant Media does not sign webhooks, so set both. Ant Media can send the webhook as form data or JSON; both work.
 
 Listen to native Laravel events:
 
@@ -412,7 +414,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // Every webhook action (playStarted, subtrackAddedInTheMainTrack, endpointFailed, ...)
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 ### Endpoints that are not wrapped
@@ -490,12 +492,17 @@ Because Ant Media Server is self-hosted, you choose where video and recordings a
 
 Recommended setup:
 
-- Run Ant Media Server in your required region (for example AWS Middle East, Google Cloud Dammam, Oracle Cloud Jeddah, EU regions or on-premise)
+- Run Ant Media Server in the region your data law requires. For Saudi personal and health data use a KSA region (for example Google Cloud Dammam, Oracle Cloud Jeddah or on-premise; the AWS Saudi Arabia region is planned for December 2026). AWS Bahrain and UAE are outside KSA, so using them is a cross-border transfer under PDPL. For EU data, use EU regions
 - Use HTTPS on port `5443` with a valid SSL certificate
 - Enable **JWT REST API Filter**; never expose the REST API publicly by IP alone
 - Enable stream **publish / play token security** for every meeting
 - Give tokens a short `exp`, and revoke tokens and subscribers when a meeting ends
 - Store recordings in encrypted storage and log who accessed them
+- Record the participant's consent (purpose, version, timestamp) before starting a recording, use random file names, and delete recordings on a retention schedule
+- Make listing or downloading recordings a separate, logged permission, and make sure play-token security also covers recording URLs (`/{app}/streams/...`)
+- Keep names and IDs of patients or students out of stream names, stream IDs and file names; use random IDs and map them in your own database
+- Never pass request input straight into `broadcasts()->create()`, `broadcasts()->update()` or `endpoints()->add()`: stream source and restream URLs can be abused to reach internal servers or copy a meeting out
+- Self-host the Ant Media JavaScript SDK and run your own STUN/TURN server in the same region; allow camera, microphone and your Ant Media origin (Permissions-Policy and CSP) only on meeting pages
 
 ## Using this package with AI coding assistants
 

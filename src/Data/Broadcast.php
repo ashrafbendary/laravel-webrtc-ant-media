@@ -26,6 +26,9 @@ final class Broadcast
 
     public static function fromArray(array $data): self
     {
+        // Never keep IP camera credentials, so toArray() / JSON can not leak them.
+        unset($data['password']);
+
         return new self(
             streamId: (string) ($data['streamId'] ?? ''),
             name: $data['name'] ?? null,

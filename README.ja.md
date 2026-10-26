@@ -163,6 +163,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | キー | 説明 |
@@ -176,7 +177,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | 配信（publish）/ 再生（play）用ストリームトークンの署名に使うシークレット |
 | `ANT_MEDIA_TIMEOUT` | HTTP タイムアウト（秒） |
 | `ANT_MEDIA_RETRIES` | 失敗した GET リクエストのリトライ回数（POST / PUT / DELETE はリトライされません）。デフォルトは `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | 受信した Webhook を検証するための共有シークレット |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **必須。** Webhook URL に含める共有シークレット。空の間は、すべての Webhook が拒否されます |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | 任意（推奨）。Ant Media サーバーの IP または CIDR をカンマ区切りで指定します。それ以外の IP からの Webhook は拒否されます。ロードバランサーの背後で運用する場合は、先に Laravel の trusted proxies を設定してください |
 
 テストアプリ用の任意の上書き設定（未設定の場合はそれぞれメインの値が使われます）：`ANT_MEDIA_TEST_ORIGIN_URL`、`ANT_MEDIA_TEST_EDGE_URL`、`ANT_MEDIA_TEST_JWT_SECRET`、`ANT_MEDIA_TEST_STREAM_JWT_SECRET`。
 
@@ -293,15 +295,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // 幅、高さ、ビット�
 会議ルームはメイントラックです。各参加者はサブトラックを配信します。
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // ルーム ID を自分で指定する
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // 全員の会議を終了する
 AntMedia::rooms()->end($room->streamId);   // メイントラックとサブトラックを停止する
@@ -337,7 +339,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### 録画（MP4 / WebM）
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // HLS の録画を MP4 に変換する
@@ -422,7 +424,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // ONVIF ディスカバリー
@@ -442,7 +444,7 @@ Ant Media の **Application Settings > Webhook URL** に、次の URL を設定�
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-`secret` が誤っているリクエストは HTTP 403 で拒否されます。Ant Media は Webhook をフォームデータまたは JSON で送信できますが、どちらにも対応しています。
+`secret` が誤っている、または指定されていないリクエストや、`ANT_MEDIA_WEBHOOK_ALLOWED_IPS`（設定されている場合）に含まれない IP からのリクエストは、HTTP 403 で拒否されます。Ant Media は Webhook に署名しないため、両方を設定してください。Ant Media は Webhook をフォームデータまたは JSON で送信できますが、どちらにも対応しています。
 
 ネイティブの Laravel イベントをリッスンします。
 
@@ -458,7 +460,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // すべての Webhook アクション（playStarted、subtrackAddedInTheMainTrack、endpointFailed など）
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 <a id="endpoints-that-are-not-wrapped"></a>
@@ -542,12 +544,17 @@ Ant Media Server はセルフホスト型のため、映像や録画データの
 
 推奨構成：
 
-- 必要なリージョンで Ant Media Server を運用する（例：AWS 中東リージョン、Google Cloud ダンマーム、Oracle Cloud ジッダ、EU リージョン、またはオンプレミス）
+- データ保護法で求められるリージョンで Ant Media Server を運用する。サウジアラビアの個人データおよび医療データには KSA リージョンを使用する（例：Google Cloud ダンマーム、Oracle Cloud ジッダ、またはオンプレミス。AWS のサウジアラビアリージョンは 2026 年 12 月に開設予定）。AWS のバーレーンおよび UAE リージョンは KSA 外にあるため、これらを使用すると PDPL 上の越境移転にあたる。EU のデータには EU リージョンを使用する
 - 有効な SSL 証明書を用いて、ポート `5443` で HTTPS を使用する
 - **JWT REST API Filter** を有効にする。IP 制限だけで REST API を公開しないこと
 - すべての会議でストリームの **配信 / 再生トークンセキュリティ** を有効にする
 - トークンの `exp` は短く設定し、会議終了時にはトークンとサブスクライバーを失効させる
 - 録画は暗号化されたストレージに保存し、誰がアクセスしたかをログに記録する
+- 録画を開始する前に参加者の同意（目的、バージョン、タイムスタンプ）を記録し、ファイル名にはランダムな名前を使い、保存期間のスケジュールに従って録画を削除する
+- 録画の一覧表示やダウンロードは、ログを記録する個別の権限とし、再生トークンセキュリティが録画の URL（`/{app}/streams/...`）にも適用されるようにする
+- 患者や学生の氏名や ID をストリーム名、ストリーム ID、ファイル名に含めない。ランダムな ID を使い、自分のデータベースで対応付ける
+- リクエストの入力を `broadcasts()->create()`、`broadcasts()->update()`、`endpoints()->add()` に直接渡さないこと。ストリームのソース URL や再配信（restream）URL は、内部サーバーへのアクセスや会議の外部への複製に悪用される恐れがある
+- Ant Media JavaScript SDK はセルフホストし、同じリージョンで独自の STUN/TURN サーバーを運用する。カメラ、マイク、Ant Media のオリジンの許可（Permissions-Policy と CSP）は会議ページでのみ行う
 
 <a id="using-this-package-with-ai-coding-assistants"></a>
 

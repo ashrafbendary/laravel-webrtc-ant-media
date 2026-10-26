@@ -81,7 +81,7 @@ class Tokens extends Resource
     protected function tokenId(mixed $response): string
     {
         if (! is_array($response) || empty($response['tokenId'])) {
-            throw new AntMediaException('Ant Media did not return a token: '.json_encode($response));
+            throw new AntMediaException('Ant Media did not return a token.');
         }
 
         return $response['tokenId'];

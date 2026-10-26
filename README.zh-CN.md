@@ -165,6 +165,7 @@ ANT_MEDIA_JWT_SECRET=your-jwt-rest-api-filter-secret
 ANT_MEDIA_STREAM_JWT_SECRET=your-stream-jwt-secret
 ANT_MEDIA_TIMEOUT=15
 ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
+ANT_MEDIA_WEBHOOK_ALLOWED_IPS=10.0.0.5
 ```
 
 | 配置项 | 说明 |
@@ -178,7 +179,8 @@ ANT_MEDIA_WEBHOOK_SECRET=your-webhook-secret
 | `ANT_MEDIA_STREAM_JWT_SECRET` | 用于签发推流 / 播放令牌的密钥 |
 | `ANT_MEDIA_TIMEOUT` | HTTP 超时时间（秒） |
 | `ANT_MEDIA_RETRIES` | 失败的 GET 请求的重试次数（POST / PUT / DELETE 从不重试）。默认 `1` |
-| `ANT_MEDIA_WEBHOOK_SECRET` | 用于校验传入 Webhook 的共享密钥 |
+| `ANT_MEDIA_WEBHOOK_SECRET` | **必填。** Webhook URL 中的共享密钥。该值为空时，所有 Webhook 都会被拒绝 |
+| `ANT_MEDIA_WEBHOOK_ALLOWED_IPS` | 可选，推荐设置。你的 Ant Media 服务器的 IP 或 CIDR，以逗号分隔；来自其他任何 IP 的 Webhook 都会被拒绝。如果位于负载均衡器之后，请先配置 Laravel 受信任代理（trusted proxies） |
 
 测试应用的可选覆盖项（未设置时各自回退到主配置的值）：`ANT_MEDIA_TEST_ORIGIN_URL`、`ANT_MEDIA_TEST_EDGE_URL`、`ANT_MEDIA_TEST_JWT_SECRET`、`ANT_MEDIA_TEST_STREAM_JWT_SECRET`。
 
@@ -295,15 +297,15 @@ AntMedia::broadcasts()->info($stream->streamId);   // 宽度、高度、码率�
 一个会议室就是一个主轨道（main track），每位参会者推送一个子轨道（subtrack）。
 
 ```php
-$room = AntMedia::rooms()->create(name: 'Doctor Consultation #1024');
+$room = AntMedia::rooms()->create(name: 'Consultation 7f3c2a');
 $room = AntMedia::rooms()->create(name: 'Class 7A', streamId: 'class-7a');   // 自定义房间 ID
 AntMedia::rooms()->get('class-7a');
 
-AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->addParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 AntMedia::rooms()->participants($room->streamId, offset: 0, size: 50);
 AntMedia::rooms()->activeParticipants($room->streamId);
 AntMedia::rooms()->activeParticipantsCount($room->streamId);
-AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'patient_1024');
+AntMedia::rooms()->removeParticipant($room->streamId, participantStreamId: 'p_9b41e2');
 
 // 为所有人结束会议
 AntMedia::rooms()->end($room->streamId);   // 停止主轨道及所有子轨道
@@ -339,7 +341,7 @@ AntMedia::tokens()->revokeAll($streamId);
 ### 录制（MP4 / WebM）
 
 ```php
-AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'consultation_1024');
+AntMedia::recordings()->start($streamId, type: 'mp4', fileName: 'rec_7f3c2a');
 AntMedia::recordings()->stop($streamId, type: 'mp4');
 
 // 将 HLS 录像转换为 MP4
@@ -424,7 +426,7 @@ $camera = AntMedia::broadcasts()->create([
     'type' => 'ipCamera',
     'ipAddr' => '192.168.1.50',
     'username' => 'admin',
-    'password' => 'secret',
+    'password' => config('services.lobby_camera.password'),
 ], autoStart: true);
 
 AntMedia::cameras()->discover();                       // ONVIF 设备发现
@@ -444,7 +446,7 @@ AntMedia::broadcasts()->start($camera->streamId);      // 开始拉取流源
 https://your-app.com/ant-media/webhook?secret=ANT_MEDIA_WEBHOOK_SECRET
 ```
 
-`secret` 错误的请求会被以 HTTP 403 拒绝。Ant Media 可以用表单数据或 JSON 发送 Webhook，两种方式均受支持。
+`secret` 错误或缺失的请求，以及来自 `ANT_MEDIA_WEBHOOK_ALLOWED_IPS`（已设置时）范围之外 IP 的请求，都会被以 HTTP 403 拒绝。Ant Media 不会对 Webhook 进行签名，因此请同时设置这两项。Ant Media 可以用表单数据或 JSON 发送 Webhook，两种方式均受支持。
 
 监听原生 Laravel 事件：
 
@@ -460,7 +462,7 @@ Event::listen(RecordingReady::class,    fn ($e) => logger("Recording ready: {$e-
 // 所有 Webhook 动作（playStarted、subtrackAddedInTheMainTrack、endpointFailed 等）
 use AshrafBendary\WebRtcAntMedia\Events\WebhookReceived;
 
-Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}", $e->payload));
+Event::listen(WebhookReceived::class, fn ($e) => logger("{$e->action}: {$e->streamId}"));
 ```
 
 <a id="endpoints-that-are-not-wrapped"></a>
@@ -544,12 +546,17 @@ AntMedia::client()->get('broadcasts/duration', ['url' => $sourceUrl]);
 
 推荐配置：
 
-- 在所需区域运行 Ant Media Server（例如 AWS 中东区域、Google Cloud 达曼、Oracle Cloud 吉达、欧盟区域或本地机房）
+- 在你的数据法规所要求的区域运行 Ant Media Server。对于沙特的个人数据和健康数据，请使用沙特境内（KSA）区域（例如 Google Cloud 达曼、Oracle Cloud 吉达或本地机房；AWS 沙特阿拉伯区域计划于 2026 年 12 月推出）。AWS 巴林和阿联酋区域位于沙特境外，因此使用它们属于 PDPL 下的跨境数据传输。对于欧盟数据，请使用欧盟区域
 - 在端口 `5443` 上使用 HTTPS 并配置有效的 SSL 证书
 - 启用 **JWT REST API Filter**；切勿仅凭 IP 限制就将 REST API 公开暴露
 - 为每场会议启用流的 **推流 / 播放令牌安全机制**
 - 为令牌设置较短的 `exp`，并在会议结束时撤销令牌和订阅者
 - 将录像存储在加密存储中，并记录访问者日志
+- 在开始录制之前记录参与者的同意（目的、版本、时间戳），使用随机文件名，并按保留期限计划删除录像
+- 将列出或下载录像设为单独的、记录日志的权限，并确保播放令牌安全机制也覆盖录像 URL（`/{app}/streams/...`）
+- 不要在流名称、流 ID 和文件名中使用患者或学生的姓名和 ID；请使用随机 ID，并在你自己的数据库中维护映射关系
+- 切勿将请求输入直接传入 `broadcasts()->create()`、`broadcasts()->update()` 或 `endpoints()->add()`：流来源 URL 和转推 URL 可能被滥用来访问内部服务器，或将会议复制到外部
+- 自行托管 Ant Media JavaScript SDK，并在同一区域运行你自己的 STUN/TURN 服务器；仅在会议页面上允许摄像头、麦克风和你的 Ant Media 源站（Permissions-Policy 和 CSP）
 
 <a id="using-this-package-with-ai-coding-assistants"></a>
 
