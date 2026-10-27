@@ -115,7 +115,7 @@ This package uses **Ant Media Server as a WebRTC SFU / media server**, so you ge
 
 - PHP **8.2** or higher
 - Laravel **11.x, 12.x or 13.x**
-- A running **Ant Media Server** (Community or Enterprise Edition). See the [Ant Media quick start](https://docs.antmedia.io/quick-start/).
+- A running **Ant Media Server** (Community or Enterprise Edition). See the [Ant Media quick start](https://docs.antmedia.io/quick-start/). Checked against Enterprise 4.0.0-SNAPSHOT build 20261022 (see [docs/compatibility.md](docs/compatibility.md)).
 
 ## Installation
 

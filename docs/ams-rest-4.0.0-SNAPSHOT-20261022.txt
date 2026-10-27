@@ -1,0 +1,141 @@
+# Ant Media Server REST endpoints, Enterprise 4.0.0-SNAPSHOT build 20261022_0944
+# Generated with tools/RestDump.java from the server distribution. Paths are relative to /{app}/rest.
+# Query parameters follow "?".
+
+DELETE /v2/applications/{appName}  ?deleteDB
+DELETE /v2/broadcasts/  ?ids
+DELETE /v2/broadcasts/{id}  ?deleteSubtracks
+DELETE /v2/broadcasts/{id}/endpoint  ?endpointServiceId,resolutionHeight
+DELETE /v2/broadcasts/{id}/subscribers
+DELETE /v2/broadcasts/{id}/subscribers/{sid}
+DELETE /v2/broadcasts/{id}/subtrack  ?id
+DELETE /v2/broadcasts/{id}/tokens
+DELETE /v2/cluster/node/{id}
+DELETE /v2/filters/mcu-filter/{id}
+DELETE /v2/filters/room-mcu-filter/{roomId}
+DELETE /v2/filters/{id}
+DELETE /v2/plugins/{pluginId}
+DELETE /v2/users/logout
+DELETE /v2/users/{username}
+DELETE /v2/vods/  ?ids
+DELETE /v2/vods/directory  ?directory
+DELETE /v2/vods/{id}
+GET    /cluster/deleteNode/{id}
+GET    /cluster/node-count
+GET    /cluster/nodes/{offset}/{size}
+GET    /v2/admin-status
+GET    /v2/applications
+GET    /v2/applications-info
+GET    /v2/applications/live-streams/{appname}
+GET    /v2/applications/settings/{appname}
+GET    /v2/applications/{appName}/metrics-history
+GET    /v2/authentication-status
+GET    /v2/broadcasts/active-live-stream-count
+GET    /v2/broadcasts/count
+GET    /v2/broadcasts/count/{search}
+GET    /v2/broadcasts/duration  ?url
+GET    /v2/broadcasts/list/{offset}/{size}  ?type_by,sort_by,order_by,search
+GET    /v2/broadcasts/ndi-streams
+GET    /v2/broadcasts/onvif-devices
+GET    /v2/broadcasts/total-broadcast-statistics
+GET    /v2/broadcasts/webrtc-receive-low-level-stats
+GET    /v2/broadcasts/webrtc-send-low-level-stats
+GET    /v2/broadcasts/{id}
+GET    /v2/broadcasts/{id}/active-subtracks-count  ?role
+GET    /v2/broadcasts/{id}/active-subtracks/{offset}/{size}  ?role
+GET    /v2/broadcasts/{id}/broadcast-statistics
+GET    /v2/broadcasts/{id}/connection-events/{offset}/{size}  ?subscriberId
+GET    /v2/broadcasts/{id}/ip-camera/device-profiles
+GET    /v2/broadcasts/{id}/jwt-token  ?expireDate,type,roomId
+GET    /v2/broadcasts/{id}/metrics-history
+GET    /v2/broadcasts/{id}/stream-info
+GET    /v2/broadcasts/{id}/subscribers/list/{offset}/{size}
+GET    /v2/broadcasts/{id}/subscribers/{sid}/totp  ?type
+GET    /v2/broadcasts/{id}/subtracks/{offset}/{size}  ?role
+GET    /v2/broadcasts/{id}/token  ?expireDate,type,roomId
+GET    /v2/broadcasts/{id}/tokens/list/{offset}/{size}
+GET    /v2/broadcasts/{streamId}/ip-camera-error
+GET    /v2/broadcasts/{stream_id}/webrtc-client-stats/{offset}/{size}
+GET    /v2/cluster-mode-status
+GET    /v2/cluster/node-count
+GET    /v2/cluster/nodes/{offset}/{size}
+GET    /v2/cpu-status
+GET    /v2/enterprise-edition
+GET    /v2/file-system-status
+GET    /v2/filters/list/{offset}/{size}
+GET    /v2/first-login-status
+GET    /v2/gpu-status
+GET    /v2/heap-dump
+GET    /v2/jvm-memory-status
+GET    /v2/last-licence-status
+GET    /v2/licence-status  ?key
+GET    /v2/live-clients-size
+GET    /v2/liveness
+GET    /v2/log-file/{offsetSize}/{charSize}  ?logType
+GET    /v2/network-status
+GET    /v2/plugins
+GET    /v2/push-notification/subscriber-auth-token  ?subscriberId,timeoutSeconds
+GET    /v2/server-settings
+GET    /v2/server-time
+GET    /v2/shutdown-proper-status  ?appNames
+GET    /v2/shutdown-properly  ?appNames
+GET    /v2/system-memory-status
+GET    /v2/system-resources
+GET    /v2/system-resources/history
+GET    /v2/system-status
+GET    /v2/thread-dump
+GET    /v2/thread-dump-json
+GET    /v2/threads
+GET    /v2/user-list
+GET    /v2/users/{usermail}/blocked
+GET    /v2/version
+GET    /v2/vods/count
+GET    /v2/vods/count/{search}
+GET    /v2/vods/list/{offset}/{size}  ?sort_by,order_by,streamId,search
+GET    /v2/vods/{id}
+POST   /cluster-communication/publish-started-notification/{id}  ?role,mainTrackId
+POST   /cluster-communication/publish-stopped-notification/{id}  ?role,mainTrackId
+POST   /cluster-communication/virtual-stream-data-message/{id}/{binary}
+POST   /v2/applications/settings/{appname}
+POST   /v2/applications/{appName}
+POST   /v2/applications/{appname}/reset
+POST   /v2/broadcasts/create  ?autoStart
+POST   /v2/broadcasts/create-list  ?onDuplicate
+POST   /v2/broadcasts/playlists/{id}/next  ?index
+POST   /v2/broadcasts/validate-token
+POST   /v2/broadcasts/{hls_filename}/hls-to-mp4  ?download,deleteHLSFiles
+POST   /v2/broadcasts/{id}/data
+POST   /v2/broadcasts/{id}/endpoint  ?resolutionHeight
+POST   /v2/broadcasts/{id}/ip-camera/move  ?valueX,valueY,valueZ,movement
+POST   /v2/broadcasts/{id}/ip-camera/stop-move
+POST   /v2/broadcasts/{id}/start
+POST   /v2/broadcasts/{id}/stop  ?stopSubtracks
+POST   /v2/broadcasts/{id}/subscribers
+POST   /v2/broadcasts/{id}/subtrack  ?id
+POST   /v2/broadcasts/{stream_id}/id3
+POST   /v2/broadcasts/{stream_id}/sei
+POST   /v2/filters/create
+POST   /v2/filters/room-mcu-filter/{roomId}  ?videoEnabled,audioEnabled
+POST   /v2/plugins/install-from-url
+POST   /v2/push-notification/subscribers  ?serviceName
+POST   /v2/push-notification/topics/{topic}  ?serviceName
+POST   /v2/server-settings
+POST   /v2/ssl-settings  ?domain,type
+POST   /v2/support/request
+POST   /v2/system/gc
+POST   /v2/users
+POST   /v2/users/authenticate
+POST   /v2/users/initial
+POST   /v2/users/password
+POST   /v2/vods/create  ?name
+POST   /v2/vods/directory  ?directory
+PUT    /v2/applications/{appName}
+PUT    /v2/broadcasts/{id}
+PUT    /v2/broadcasts/{id}/recording/{recording-status}  ?recordType,resolutionHeight,fileName
+PUT    /v2/broadcasts/{id}/seek-time/{seekTimeMs}
+PUT    /v2/broadcasts/{id}/subscribers/{sid}/block/{seconds}/{type}
+PUT    /v2/cluster/node/{id}/note  ?note
+PUT    /v2/filters/mcu-filter
+PUT    /v2/filters/mcu-plugin-type  ?type
+PUT    /v2/plugins/{pluginId}
+PUT    /v2/users
