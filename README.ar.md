@@ -125,7 +125,7 @@
 
 - PHP **8.2** أو أحدث
 - Laravel **11.x أو 12.x أو 13.x**
-- خادم **Ant Media Server** قيد التشغيل (الإصدار المجتمعي Community Edition أو إصدار المؤسسات Enterprise Edition). راجع [دليل البدء السريع من Ant Media](https://docs.antmedia.io/quick-start/).
+- خادم **Ant Media Server** قيد التشغيل (الإصدار المجتمعي Community Edition أو إصدار المؤسسات Enterprise Edition). راجع [دليل البدء السريع من Ant Media](https://docs.antmedia.io/quick-start/). تم التحقق من التوافق مع إصدار المؤسسات 4.0.0-SNAPSHOT بناء 20261022 (راجع [docs/compatibility.md](docs/compatibility.md)).
 
 <a id="installation"></a>
 
